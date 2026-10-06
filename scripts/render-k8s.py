@@ -91,6 +91,7 @@ def main() -> None:
             elif stage == "platform":
                 config["patches"] = [patch("ConfigMap", "lifelog-config", [
                     {"op": "replace", "path": "/data/CORS_ORIGINS", "value": json.dumps([f"https://{args.hostname}"])},
+                    {"op": "replace", "path": "/data/ACTION_SERVER_URL", "value": f"https://{args.hostname}"},
                 ])]
             elif stage == "ingress":
                 config["patches"] = [patch("Ingress", "lifelog", [

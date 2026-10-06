@@ -32,6 +32,15 @@ if not password:
             file.write(secrets.token_urlsafe(32))
     password = path.read_text()
 env["APP_PASSWORD"] = password
+token = env.get("API_TOKEN") or values.get("API_TOKEN")
+if not token:
+    path = Path("/tmp/autolog-test-api-token")
+    if not path.exists():
+        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(descriptor, "w") as file:
+            file.write(secrets.token_urlsafe(48))
+    token = path.read_text()
+env["API_TOKEN"] = token
 if args.action == "build":
     subprocess.run([sys.executable, str(root / "scripts/cloud-build.py")], cwd=root, env=env, check=True)
 else:
@@ -41,7 +50,7 @@ else:
         assert json.load(response)["status"] == "ready"
     username = env.get("APP_USERNAME") or values.get("APP_USERNAME") or "autolog"
     authorization = "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()
-    request = Request("http://127.0.0.1:3000/api/entries", headers={"Authorization": authorization})
+    request = Request("http://127.0.0.1:3000/api/articles", headers={"Authorization": authorization})
     with opener.open(request, timeout=10) as response:
         assert {"items", "total", "limit", "offset"}.issubset(json.load(response))
     print("Development frontend, authenticated API proxy and DB readiness verified.")

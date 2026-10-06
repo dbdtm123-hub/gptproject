@@ -20,7 +20,7 @@ def test_batch_validation_and_atomic_save(client, payload):
 
 
 def test_missing_ai_key_keeps_manual_mode(client, payload, monkeypatch):
-    monkeypatch.setattr(ai, "get_settings", lambda: SimpleNamespace(openai_api_key=None))
+    monkeypatch.setattr(ai, "get_settings", lambda: SimpleNamespace(openai_api_key=None, enable_openai_classification=True))
     assert client.post("/api/entries/parse", json={"raw_text": payload["raw_text"]}).status_code == 503
     assert client.post("/api/entries", json=payload).status_code == 201
 
@@ -28,7 +28,7 @@ def test_missing_ai_key_keeps_manual_mode(client, payload, monkeypatch):
 @pytest.fixture
 def fake_settings(monkeypatch):
     monkeypatch.setattr(ai, "get_settings", lambda: SimpleNamespace(
-        openai_api_key=SecretStr("test-secret-never-return"), openai_model="gpt-4o-mini"))
+        openai_api_key=SecretStr("test-secret-never-return"), openai_model="gpt-4o-mini", enable_openai_classification=True))
 
 
 def test_structured_parse_does_not_save(client, payload, monkeypatch, fake_settings):

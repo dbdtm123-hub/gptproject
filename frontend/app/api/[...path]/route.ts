@@ -6,14 +6,17 @@ const maxBytes = 1024 * 1024;
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   const route = path.join("/");
-  const allowed = /^(categories|entries|entries\/(parse|batch|[0-9a-f-]{36}))$/.test(route);
+  const articleRoute = /^(articles|articles\/(upsert|[0-9a-f-]{36})|tags)$/.test(route);
+  const external = /^(ingest|ingest\/(batch|categories))$/.test(route) ||
+    ((articleRoute || route === "categories") && !/^Basic /i.test(request.headers.get("authorization") || ""));
+  const allowed = articleRoute || /^(ingest|ingest\/(batch|categories)|capabilities|categories|entries|entries\/(parse|batch|[0-9a-f-]{36}))$/.test(route);
   if (!allowed) return NextResponse.json({ detail: "Not found" }, { status: 404 });
   if (request.method !== "GET") {
     if (!request.headers.get("content-type")?.startsWith("application/json")) {
       return NextResponse.json({ detail: "JSON is required" }, { status: 415 });
     }
     const origin = request.headers.get("origin");
-    if (origin) {
+    if (origin && !external) {
       try {
         if (new URL(origin).host !== request.headers.get("host")) throw new Error("origin mismatch");
       } catch {
@@ -23,6 +26,9 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   }
   const backend = process.env.BACKEND_URL;
   if (!backend) return NextResponse.json({ detail: "Backend is not configured" }, { status: 503 });
+  const authorization = external ? request.headers.get("authorization") :
+    (process.env.API_TOKEN ? `Bearer ${process.env.API_TOKEN}` : null);
+  if (!external && !authorization) return NextResponse.json({ detail: "API authentication is not configured" }, { status: 503 });
   let body: Uint8Array | undefined;
   if (request.body && request.method !== "GET") {
     const reader = request.body.getReader();
@@ -45,7 +51,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   try {
     const response = await fetch(`${backend.replace(/\/$/, "")}/api/${route}${request.nextUrl.search}`, {
       method: request.method,
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json",
+        ...(authorization ? { Authorization: authorization } : {}) },
       body: body as BodyInit | undefined,
       cache: "no-store",
       redirect: "error",
@@ -53,7 +60,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
     });
     return new NextResponse(response.status === 204 ? null : await response.text(), {
       status: response.status,
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store",
+        ...(response.headers.get("www-authenticate") ? { "WWW-Authenticate": response.headers.get("www-authenticate")! } : {}) },
     });
   } catch {
     return NextResponse.json({ detail: "Backend is unavailable" }, { status: 502 });

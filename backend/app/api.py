@@ -12,9 +12,18 @@ from app.repository import find_entry, get_or_create_category
 from app.schemas import CategoryRead, EntryCreate, EntryPage, EntryRead, EntryUpdate
 from app.schemas import EntryBatch, ParseRequest
 from app.ai import parse_entries
+from app.auth import require_api_token
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(require_api_token)])
 DB = Annotated[Session, Depends(get_session)]
+
+
+@router.get("/capabilities", tags=["configuration"])
+def capabilities() -> dict[str, bool]:
+    from app.config import get_settings
+    settings = get_settings()
+    return {"server_ai_classification": bool(settings.enable_openai_classification and
+            settings.openai_api_key and settings.openai_api_key.get_secret_value())}
 
 
 @router.post("/entries/parse", response_model=list[EntryCreate], tags=["entries"])
@@ -24,6 +33,8 @@ def classify_entries(payload: ParseRequest, session: DB) -> list[EntryCreate]:
 
 
 @router.post("/entries/batch", response_model=list[EntryRead], status_code=201, tags=["entries"])
+@router.post("/ingest/batch", response_model=list[EntryRead], status_code=201, tags=["ingest"],
+             operation_id="ingestBatch", summary="Save up to 20 already classified entries atomically")
 def create_batch(payload: EntryBatch, session: DB) -> list[Entry]:
     entries = []
     for candidate in payload.entries:
@@ -38,6 +49,8 @@ def create_batch(payload: EntryBatch, session: DB) -> list[Entry]:
 
 
 @router.post("/entries", response_model=EntryRead, status_code=status.HTTP_201_CREATED, tags=["entries"])
+@router.post("/ingest", response_model=EntryRead, status_code=201, tags=["ingest"],
+             operation_id="ingestEntry", summary="Validate and save an already classified entry")
 def create_entry(payload: EntryCreate, session: DB) -> Entry:
     data = payload.model_dump(exclude={"category"})
     entry = Entry(**data, category_record=get_or_create_category(session, payload.category))
@@ -96,6 +109,9 @@ def delete_entry(entry_id: UUID, session: DB) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/categories", response_model=list[CategoryRead], tags=["categories"])
+@router.get("/categories", response_model=list[CategoryRead], tags=["categories"],
+            operation_id="listIngestCategories", summary="List existing categories before classifying")
+@router.get("/ingest/categories", response_model=list[CategoryRead], tags=["ingest"],
+            summary="Compatibility alias for the category list")
 def list_categories(session: DB) -> list[Category]:
     return list(session.scalars(select(Category).order_by(Category.name, Category.id)).all())

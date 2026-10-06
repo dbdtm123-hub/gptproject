@@ -1,124 +1,71 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { api, ArticlePage, Category, date } from "../lib/api";
 
-type Candidate = { raw_text: string; category: string; subcategory: string | null; title: string;
-  summary: string; tags: string[]; importance: number; occurred_at: string };
-type Entry = Candidate & { id: string; category_id: string; created_at: string };
-type Draft = Candidate & { draftId: string };
-type Category = { id: string; name: string };
-
-async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/${path}`, { ...options, headers: { "Content-Type": "application/json" }, cache: "no-store" });
-  if (response.status === 204) return undefined as T;
-  const data = await response.json();
-  if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "입력 내용을 확인해 주세요.");
-  return data as T;
-}
-
-export default function Home() {
-  const draftSequence = useRef(0);
-  const [rawText, setRawText] = useState("");
-  const [candidates, setCandidates] = useState<Draft[]>([]);
-  const [entries, setEntries] = useState<Entry[]>([]);
+export default function Blog() {
+  const [data, setData] = useState<ArticlePage>({ items: [], total: 0, limit: 20, offset: 0 });
   const [categories, setCategories] = useState<Category[]>([]);
-  const [filter, setFilter] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [category, setCategory] = useState("");
+  const [tag, setTag] = useState("");
+  const [status, setStatus] = useState("");
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [detail, setDetail] = useState<Entry | null>(null);
+  const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    const query = new URLSearchParams({ limit: "20", offset: String(page * 20) });
-    if (filter) query.set("category_id", filter);
-    const [timeline, cats] = await Promise.all([
-      api<{ items: Entry[]; total: number }>(`entries?${query}`, { signal }),
-      api<Category[]>("categories", { signal }),
+  const load = useCallback(async (signal: AbortSignal) => {
+    const params = new URLSearchParams({ limit: "20", offset: String(page * 20) });
+    if (category) params.set("category_id", category);
+    if (tag) params.set("tag", tag);
+    if (status) params.set("status", status);
+    if (query) params.set("q", query);
+    const [articles, cats, allTags] = await Promise.all([
+      api<ArticlePage>(`articles?${params}`, { signal }), api<Category[]>("categories", { signal }), api<string[]>("tags", { signal }),
     ]);
-    setEntries(timeline.items); setTotal(timeline.total); setCategories(cats);
-  }, [filter, page]);
+    setData(articles); setCategories(cats); setTags(allTags); setLoaded(true); setError("");
+    if (articles.total > 0 && page * 20 >= articles.total) setPage(Math.ceil(articles.total / 20) - 1);
+  }, [category, tag, status, query, page]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    load(controller.signal).catch(error => { if (!controller.signal.aborted) setMessage(error.message); });
-    return () => controller.abort();
+    const controller = new AbortController(); let pending = false;
+    const refresh = () => {
+      if (pending || document.visibilityState === "hidden") return;
+      pending = true;
+      load(controller.signal).catch(e => { if (!controller.signal.aborted) setError(e.message); }).finally(() => { pending = false; });
+    };
+    refresh(); const interval = window.setInterval(refresh, 3000);
+    window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);
+    return () => { controller.abort(); window.clearInterval(interval); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
   }, [load]);
 
-  async function parse() {
-    setBusy(true); setMessage(""); setCandidates([]);
-    try {
-      const parsed = await api<Candidate[]>("entries/parse", { method: "POST", body: JSON.stringify({ raw_text: rawText }) });
-      setCandidates(parsed.map(item => ({ ...item, draftId: String(++draftSequence.current) })));
-    }
-    catch (error) { setMessage((error as Error).message); }
-    finally { setBusy(false); }
-  }
-  function manual() {
-    setCandidates([{ draftId: String(++draftSequence.current), raw_text: rawText, category: "일상", subcategory: null, title: rawText.slice(0, 100),
-      summary: rawText.slice(0, 5000), tags: [], importance: 3, occurred_at: new Date().toISOString() }]);
-    setMessage("");
-  }
-  function edit(index: number, changes: Partial<Candidate>) {
-    setCandidates(items => items.map((item, i) => i === index ? { ...item, ...changes } : item));
-  }
-  async function save() {
-    setBusy(true); setMessage("");
-    try {
-      const records = candidates.map(({ draftId, ...entry }) => { void draftId; return entry; });
-      await api<Entry[]>("entries/batch", { method: "POST", body: JSON.stringify({ entries: records }) });
-      setCandidates([]); setRawText("");
-      if (filter || page) { setFilter(""); setPage(0); } else await load();
-      setMessage("기록을 저장했습니다.");
-    } catch (error) { setMessage((error as Error).message); }
-    finally { setBusy(false); }
-  }
-  async function remove(entry: Entry) {
-    if (!window.confirm(`“${entry.title}” 기록을 삭제할까요?`)) return;
-    setBusy(true);
-    try {
-      await api(`entries/${entry.id}`, { method: "DELETE" }); setDetail(null);
-      if (entries.length === 1 && page > 0) setPage(page - 1); else await load();
-    } catch (error) { setMessage((error as Error).message); }
-    finally { setBusy(false); }
-  }
-
-  return <main>
-    <header><span className="eyebrow">나의 하루를 모으는 곳</span><h1>Autolog</h1><p>일상을 적으면 AI가 기록으로 정리해 줍니다.</p></header>
-    <section aria-labelledby="input-title"><h2 id="input-title">오늘의 기록</h2>
-      <label htmlFor="raw">무슨 일이 있었나요?</label>
-      <textarea id="raw" value={rawText} maxLength={20000} onChange={e => setRawText(e.target.value)}
-        placeholder="벤치프레스 60kg 5x5 했고, OpenStack 장애를 해결했고, Cilium을 공부했어요." />
-      <div className="actions"><button disabled={busy || !rawText.trim()} onClick={parse}>{busy ? "처리 중…" : "AI로 정리"}</button>
-        <button className="secondary" disabled={busy || !rawText.trim()} onClick={manual}>직접 분류</button></div>
+  return <main className="blog">
+    <header className="blog-header"><div><span className="eyebrow">대화에서 지식으로</span><h1>AutoLog</h1>
+      <p>작업 과정과 문제 해결을 오래 읽을 수 있는 기술 글로 남깁니다.</p></div>
+      <Link className="button" href="/articles/new">직접 작성</Link></header>
+    <section className="filters" aria-label="글 검색과 필터">
+      <form className="search" onSubmit={e => { e.preventDefault(); setQuery(search.trim()); setPage(0); }}>
+        <label htmlFor="search">검색</label><div className="actions"><input id="search" maxLength={200} value={search} onChange={e => setSearch(e.target.value)} placeholder="제목, 요약, 본문에서 검색" /><button type="submit">검색</button></div>
+      </form>
+      <div className="columns">
+        <label>카테고리<select aria-label="카테고리 필터" value={category} onChange={e => { setCategory(e.target.value); setPage(0); }}><option value="">전체 카테고리</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+        <label>태그<select aria-label="태그 필터" value={tag} onChange={e => { setTag(e.target.value); setPage(0); }}><option value="">전체 태그</option>{tags.map(t => <option key={t}>{t}</option>)}</select></label>
+        <label>상태<select aria-label="상태 필터" value={status} onChange={e => { setStatus(e.target.value); setPage(0); }}><option value="">전체 상태</option><option value="published">발행됨</option><option value="draft">초안</option></select></label>
+      </div>
     </section>
-    {message && <p className="notice" role="status">{message}</p>}
-    {candidates.length > 0 && <section><h2>저장 전 확인 · {candidates.length}개</h2>
-      {candidates.map((item, index) => <article className="candidate" key={item.draftId}>
-        <label>제목<input value={item.title} maxLength={200} onChange={e => edit(index, { title: e.target.value })} /></label>
-        <div className="columns"><label>카테고리<input value={item.category} maxLength={100} onChange={e => edit(index, { category: e.target.value })} /></label>
-          <label>하위 분류<input value={item.subcategory || ""} maxLength={100} onChange={e => edit(index, { subcategory: e.target.value || null })} /></label></div>
-        <label>요약<textarea value={item.summary} maxLength={5000} onChange={e => edit(index, { summary: e.target.value })} /></label>
-        <label>태그 (쉼표로 구분)<input defaultValue={item.tags.join(", ")} onBlur={e => edit(index, { tags: e.target.value.split(",").map(tag => tag.trim()).filter(Boolean) })} /></label>
-        <label>중요도<select value={item.importance} onChange={e => edit(index, { importance: Number(e.target.value) })}>{[1,2,3,4,5].map(value => <option key={value}>{value}</option>)}</select></label>
-        <button className="secondary" onClick={() => setCandidates(items => items.filter((_, i) => i !== index))}>제외</button>
-      </article>)}
-      <button disabled={busy || candidates.some(item => !item.title.trim() || !item.category.trim() || !item.summary.trim())} onClick={save}>기록 {candidates.length}개 저장</button>
-    </section>}
-    <section><div className="section-header"><h2>타임라인 <small>{total}개</small></h2>
-      <label>카테고리<select value={filter} onChange={e => { setFilter(e.target.value); setPage(0); }}>
-        <option value="">전체</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label></div>
-      {entries.length === 0 && <p className="empty">아직 기록이 없습니다. 첫 기록을 남겨보세요.</p>}
-      {entries.map(entry => <article key={entry.id} className="entry"><div className="meta"><span>{entry.category}{entry.subcategory ? ` / ${entry.subcategory}` : ""}</span>
-        <time dateTime={entry.occurred_at}>{new Date(entry.occurred_at).toLocaleString("ko-KR")}</time></div>
-        <h3><button className="link" onClick={async () => { try { setDetail(await api<Entry>(`entries/${entry.id}`)); } catch (error) { setMessage((error as Error).message); } }}>{entry.title}</button></h3>
-        <p>{entry.summary}</p><div className="tags">{entry.tags.map(tag => <span key={tag}>#{tag}</span>)}</div>
-        <button className="danger" disabled={busy} onClick={() => remove(entry)}>삭제</button></article>)}
-      <div className="actions"><button className="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>이전</button><span>{page + 1} 페이지</span>
-        <button className="secondary" disabled={(page + 1) * 20 >= total} onClick={() => setPage(page + 1)}>다음</button></div>
-    </section>
-    {detail && <div className="modal" role="dialog" aria-modal="true" aria-labelledby="detail-title"><section><h2 id="detail-title">{detail.title}</h2>
-      <p>{detail.category} · 중요도 {detail.importance}</p><p>{detail.summary}</p><h3>원본 입력</h3><p className="raw">{detail.raw_text}</p>
-      <button onClick={() => setDetail(null)}>닫기</button></section></div>}
+    {error && <p className="notice" role="alert">{error}</p>}
+    <div className="section-header"><h2>기술 노트 <small>{data.total}개</small></h2><Link href="/legacy">이전 라이프로그</Link></div>
+    {!loaded && !error && <p>글을 불러오는 중…</p>}
+    {loaded && data.items.length === 0 && <section><p>조건에 맞는 글이 없습니다. ChatGPT에서 글을 저장하거나 직접 작성해 보세요.</p></section>}
+    <div className="article-grid">{data.items.map(article => <article key={article.id} className="article-card">
+      <div className="meta"><span>{article.category}{article.subcategory ? ` / ${article.subcategory}` : ""}</span><span className={`badge ${article.status}`}>{article.status === "published" ? "발행됨" : "초안"}</span></div>
+      <h2><Link href={`/articles/${article.id}`}>{article.title}</Link></h2><p>{article.summary}</p>
+      <div className="tags">{article.tags.map(t => <button className="tag" key={t} onClick={() => { setTag(t); setPage(0); }}>#{t}</button>)}</div>
+      <div className="dates">작성 <time dateTime={article.created_at}>{date(article.created_at)}</time><br />수정 <time dateTime={article.updated_at}>{date(article.updated_at)}</time></div>
+    </article>)}</div>
+    <div className="actions pagination"><button className="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>이전</button><span>{page + 1} 페이지</span><button className="secondary" disabled={(page + 1) * 20 >= data.total} onClick={() => setPage(page + 1)}>다음</button></div>
   </main>;
 }

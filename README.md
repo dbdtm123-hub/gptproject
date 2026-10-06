@@ -1,8 +1,59 @@
-# Autolog — AI 자동 라이프로그
+# AutoLog — 대화에서 만드는 개인 기술 블로그 / 지식 베이스
 
-Next.js UI, FastAPI API, PostgreSQL과 Alembic을 포함한다. 자연어 AI 분류, 여러 기록 분리,
-분류 결과 수정·일괄 저장, 카테고리 필터, 타임라인, 상세 조회·삭제를 구현했다.
-OpenAI는 structured JSON을 반환하고 백엔드가 검증한 뒤에만 저장한다.
+평소 ChatGPT와 나눈 작업·장애 해결·학습 대화를 완성된 Markdown 기술 글로 저장하고 읽는다.
+핵심 데이터는 Article.content_markdown이다. 백엔드는 글을 검증·저장하며 OpenAI를 다시 호출하지 않는다.
+
+```mermaid
+flowchart LR
+  Conversation[ChatGPT 대화] --> Writer[ChatGPT가 Markdown Article 작성]
+  Writer -->|HTTPS Bearer token| API[AutoLog Article API]
+  API --> DB[(PostgreSQL)]
+  DB --> API
+  API --> Blog[Next.js 블로그 UI]
+```
+
+글 목록, 카테고리·태그·상태 필터, 제목/요약/본문 검색, Markdown 상세 페이지와 코드 블록,
+관련 글, 작성일/수정일, 직접 작성·편집·삭제를 제공한다. draft/published는 개인 지식 베이스의
+상태 구분이며 published 글도 웹 Basic 인증으로 보호한다. 공개 발행 권한 모델은 아직 제공하지 않는다.
+
+[ChatGPT Action 연동](docs/chatgpt-actions.md), [아키텍처](docs/architecture.md),
+[검증 기록](docs/verification.md), [NFS 블로그 요청 예제](docs/examples/nfs-article.json)를 참고한다.
+
+## Article API와 기존 글 이어쓰기
+
+모든 backend 데이터 API는 `Authorization: Bearer <API_TOKEN>`을 요구한다.
+웹 UI는 Basic 로그인 뒤 Next.js 서버에서 토큰을 전달하며 브라우저에 토큰을 노출하지 않는다.
+
+| 메서드 | 경로 | 용도 |
+| --- | --- | --- |
+| POST | /api/articles | 새 Markdown 글 생성 (201), 중복 slug는 409 |
+| POST | /api/articles/upsert | 같은 slug 또는 target_article_id 갱신, 신규 201 / 갱신 200 |
+| GET | /api/articles | q, slug, category_id, tag, status, limit, offset 검색·필터 |
+| GET | /api/articles/{id} | 전체 Markdown과 관련 글 ID 조회 |
+| PATCH | /api/articles/{id} | 부분 수정, expected_updated_at으로 충돌 검사 |
+| DELETE | /api/articles/{id} | 삭제 및 관련 링크 정리 |
+| GET | /api/categories | 기존 카테고리 목록 (Entry와 공유) |
+| GET | /api/tags | Article에 사용된 태그 목록 |
+| GET | /openapi-action.json | 공개 Article Action schema |
+
+ChatGPT는 저장 전에 `/api/categories`와 `/api/articles?q=주제`를 조회한다.
+같은 주제로 판단한 글이 있으면 상세를 읽고 기존 ID를 `target_article_id`로 지정한다.
+서버의 매칭은 **동일 slug 또는 명시적 ID**이며 의미 유사도를 자동 추측하지 않는다.
+새 주제는 안정적인 slug로 upsert한다. `mode=replace`는 완성된 본문 교체,
+`mode=append`는 기존 본문 뒤에 구분선과 새 Markdown을 추가한다.
+append는 태그와 관련 글을 합치며, 기존 글에서 생략한 선택 메타데이터는 보존한다.
+`expected_updated_at`을 상세 조회의 값으로 보내면 동시 수정 시 409로 차단한다.
+생략한 replace는 마지막 요청의 내용을 적용하므로 기존 글 갱신에는 버전 값을 권장한다.
+
+## 기존 설치에서 전환
+
+`0002_articles` migration은 Article·관련 링크 테이블만 추가하고 Entry/Category를 보존한다.
+기존 Entry API와 ingest API는 유지되며 이전 UI는 `/legacy`에서 사용할 수 있다.
+짧은 Entry를 완성된 기술 글로 자동 변환하지 않는다. 필요한 내용은 ChatGPT로 글을 작성해 옮긴다.
+
+개발: 새 이미지 빌드 후 `docker compose up -d --wait`를 실행하면 migration이 먼저 적용된다.
+운영: 아래 업데이트 순서대로 새 backend 이미지의 migration Job 완료 후 API/UI를 rollout한다.
+Namespace, PostgreSQL volume이나 PVC를 삭제하지 않는다.
 
 운영: **Ubuntu VM 3대 / Kubernetes / containerd / Cilium**, 이미지 빌드: **Podman**.
 Docker Compose는 개발·통합 테스트 전용이다. Kubernetes 노드에 Docker daemon을 설치하지 않는다.
@@ -17,8 +68,12 @@ Docker Compose는 개발·통합 테스트 전용이다. Kubernetes 노드에 Do
 - k8s/examples: Secret 구조와 기본 StorageClass 없는 환경의 local PV 예시.
 
 브라우저 → Frontend NodePort(30080) → Next.js 서버 /api 프록시 → Backend ClusterIP → PostgreSQL.
-OpenAI는 backend에서만 호출한다. 프론트엔드 서버의 Basic 인증으로 페이지와 /api를 보호한다.
-비밀번호 설정이 빠지면 보호된 경로는 503으로 닫힌다. health endpoint는 인증 없이 상태만 반환한다.
+ChatGPT → HTTPS frontend `/api/articles` 또는 `/api/articles/upsert` → Bearer 검증 → Backend → PostgreSQL.
+웹 UI의 Article API와 이전 Entry 프록시는 Basic 로그인 후 서버에서 API 토큰을 주입한다.
+외부 Article API·태그·카테고리 및 이전 ingest 호출에는 클라이언트 Bearer 헤더를 그대로 전달한다.
+열린 UI는 외부 저장을 3초마다 확인하고 창/탭 복귀 시에도 새로 조회한다.
+토큰/로그인 설정이 빠지면 해당 보호 경로는 닫힌다. health와 Action schema는 공개한다.
+선택적 OpenAI 분류는 이전 `/legacy` Entry 기능에만 적용한다. Article API는 이 설정과 관계없이 OpenAI를 호출하지 않는다.
 
 | 변수 | 주입 대상 | 저장 위치 |
 | --- | --- | --- |
@@ -27,13 +82,17 @@ OpenAI는 backend에서만 호출한다. 프론트엔드 서버의 Basic 인증�
 | POSTGRES_DB, POSTGRES_USER | PostgreSQL | ConfigMap (기본 lifelog) |
 | OPENAI_API_KEY | backend만 | lifelog-openai Secret |
 | OPENAI_MODEL | backend | ConfigMap (기본 gpt-4o-mini) |
+| ENABLE_OPENAI_CLASSIFICATION | backend | ConfigMap (기본 false) |
+| API_TOKEN | backend, frontend 서버만 | lifelog-api Secret, 32자 이상 무작위 토큰 |
+| ACTION_SERVER_URL | backend | ConfigMap, 외부 HTTPS URL |
 | BACKEND_URL | frontend 서버 | ConfigMap (http://lifelog-backend:8000) |
 | APP_USERNAME, APP_PASSWORD | frontend 서버 | lifelog-app Secret |
 | CORS_ORIGINS | backend | ConfigMap, JSON 배열 |
 
 키와 비밀번호를 YAML, Git, 이미지, NEXT_PUBLIC 변수에 넣지 않는다. .env.example의 빈 값은
 보안 설정으로 채우며 실제 .env는 Git에서 제외한다. Kubernetes는 .env를 읽지 않고 Secret/ConfigMap을 쓴다.
-OpenAI Secret은 수동 입력 테스트에만 생략 가능하다. 생략하면 AI 분류는 503이고 직접 분류·저장은 작동한다.
+OpenAI Secret은 기본 운영에서 생략한다. 블로그·Article 저장·조회·수정·삭제에는 필요하지 않다.
+서버 AI 분류가 필요하면 Secret과 `ENABLE_OPENAI_CLASSIFICATION=true`를 함께 설정한다.
 
 ## 1. 클러스터 확인
 
@@ -175,8 +234,11 @@ kubectl -n lifelog create secret generic lifelog-app \
   --from-file=APP_USERNAME="$SECRET_DIR/APP_USERNAME" \
   --from-file=APP_PASSWORD="$SECRET_DIR/APP_PASSWORD" \
   --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n lifelog create secret generic lifelog-api \
+  --from-file=API_TOKEN="$SECRET_DIR/API_TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
 
-# helper에서 실제 키를 입력한 경우에만. 키 없이 수동 입력 테스트는 가능하다.
+# 선택적인 서버 AI 분류에만 필요하다. 외부 AI ingest에는 필요하지 않다.
 if test -f "$SECRET_DIR/OPENAI_API_KEY"; then
   kubectl -n lifelog create secret generic lifelog-openai \
     --from-file=OPENAI_API_KEY="$SECRET_DIR/OPENAI_API_KEY" \
@@ -221,7 +283,7 @@ kubectl -n lifelog get pods,svc,pvc
 
 emptyDir에서는 DB용 PVC가 없는 것이 정상이다. Job 실패 시 원인을 조사하고 API를 업데이트하지 않는다.
 API/UI는 기본 2 replicas이며 CPU/memory requests·limits, startup/readiness/liveness probe, PDB를 포함한다.
-DB liveness와 API liveness는 각각 분리되고 frontend readiness는 backend 연결과 로그인 설정을 확인한다.
+DB liveness와 API liveness는 각각 분리되고 frontend readiness는 backend 준비와 로그인·API 토큰 일치를 확인한다.
 
 NetworkPolicy는 frontend→backend→DB만 허용하며 CiliumNetworkPolicy는 frontend의 NodePort/Ingress 접속과
 backend의 api.openai.com HTTPS를 허용한다. DNS 규칙은 kube-system/kube-dns 기준이다.
@@ -241,11 +303,12 @@ export NODE_IP=YOUR_REACHABLE_VM_IP
 curl --fail "http://$NODE_IP:30080/health/live"
 curl --fail "http://$NODE_IP:30080/health/ready"
 # 비밀번호는 curl이 대화형으로 묻는다.
-curl --fail --user YOUR_APP_USERNAME "http://$NODE_IP:30080/api/entries"
+curl --fail --user YOUR_APP_USERNAME "http://$NODE_IP:30080/api/articles"
 ~~~
 
 브라우저에서 http://VM_IP:30080을 열고 Secret의 앱 계정으로 로그인한다.
-먼저 직접 분류로 기록 생성·필터·상세·삭제를 확인한 뒤, 실제 OpenAI Secret이 있으면 AI 분류도 확인한다.
+직접 작성으로 글 생성·검색·필터·상세·수정·삭제를 확인한다. ChatGPT 연동은 Article Action 문서대로
+HTTPS와 Bearer 토큰으로 확인한다. 기존 선택적 Entry 분류만 flag와 OpenAI Secret을 필요로 한다.
 NodePort HTTP는 테스트용이며 Basic 암호와 기록이 암호화되지 않는다.
 민감한 개인 기록의 실제 외부 운영은 다음 TLS 옵션이나 별도의 신뢰 TLS reverse proxy를 준비한다.
 
@@ -265,7 +328,8 @@ ingressController와 필요한 kubeProxyReplacement/Envoy/L7 설정을 활성화
 Helm release를 새 기본값으로 덮어쓰지 않는다. IngressClass cilium과 controller 상태를 확인한다.
 
 실제 도메인과 TLS 인증서를 준비하고 새 디렉터리에 --frontend-service ClusterIP로 다시 render한다.
-이 구성은 API를 직접 공개하지 않고 인증이 있는 frontend로 모든 경로를 보낸다.
+이 구성은 frontend로 모든 경로를 보낸다. 웹 경로는 Basic 인증,
+외부 Article API·태그·카테고리와 기존 ingest 경로는 backend Bearer 인증을 사용한다.
 
 ~~~bash
 export LIFELOG_HOST=autolog.your-domain.example
@@ -299,7 +363,7 @@ LB를 쓰면 DNS를 VIP에 연결해 기본 HTTPS 443으로 접속한다. DNS �
 
 ~~~bash
 curl --fail --resolve "$LIFELOG_HOST:443:YOUR_LB_IP" "https://$LIFELOG_HOST/health/ready"
-curl --fail --user YOUR_APP_USERNAME "https://$LIFELOG_HOST/api/entries"
+curl --fail --user YOUR_APP_USERNAME "https://$LIFELOG_HOST/api/articles"
 ~~~
 
 인증 없는 /api 요청이 401인지 확인한다. curl -k로 인증서 검증을 생략하지 않는다.
@@ -329,8 +393,9 @@ kubectl -n kube-system logs -l k8s-app=cilium --tail=100
 - PVC Pending: 기본 Class 존재, local PV의 용량/class/nodeAffinity 또는 CSI 상태를 확인한다.
 - CreateContainerConfigError: Secret 이름/키를 확인한다. Secret 값을 출력하지 않는다.
 - DB 인증 실패: 실제 DB 비밀번호와 Secret이 일치하는지 확인한다.
-- UI 503: 앱 로그인 Secret과 backend readiness, UI 502: frontend→backend/DNS 정책을 확인한다.
-- AI 503: OpenAI Secret 미설정, 502/504: 모델·키 권한·FQDN egress·공급자 상태를 확인한다.
+- UI 503: 앱 로그인 Secret·API_TOKEN 일치·backend readiness, UI 502: frontend→backend/DNS 정책을 확인한다.
+- API 401: Bearer 토큰 불일치, API/ready 503: API_TOKEN Secret과 32자 이상 길이를 확인한다.
+- 선택적 AI 503: 기능 flag 꺼짐 또는 OpenAI Secret 미설정. 502/504: 모델·키 권한·FQDN egress를 확인한다.
 
 업데이트는 DB 백업 → 새 image push/render → 이전 Job이 종료됐는지 확인 → 이전 Job만 삭제 →
 새 migration 완료 → backend/frontend 적용·재시작 → HTTP 검증 순서다.
@@ -366,7 +431,7 @@ kubectl -n lifelog exec lifelog-postgres-0 -- sh -c \
 
 ~~~bash
 test -f .env || cp .env.example .env
-# .env에 개발 DB 비밀번호, URL-encoded DATABASE_URL, APP_PASSWORD를 설정한다.
+# .env에 개발 DB 비밀번호, URL-encoded DATABASE_URL, APP_PASSWORD, API_TOKEN(32자 이상)을 설정한다.
 docker compose up --build -d --wait
 curl --fail http://127.0.0.1:3000/health/ready
 ~~~
@@ -394,7 +459,7 @@ cd frontend
 npm ci
 npm run typecheck
 npm run build
-# 로컬 Next 개발은 frontend/.env.example을 .env.local로 복사하고 로그인/백엔드 주소만 설정한다.
+# 로컬 Next 개발은 frontend/.env.example을 .env.local로 복사하고 로그인/백엔드 주소/API_TOKEN을 설정한다.
 ~~~
 
 기존 checkout을 사용한다. 명시적 요청 없이 worktree를 만들지 않는다.

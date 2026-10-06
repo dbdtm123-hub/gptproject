@@ -2,6 +2,18 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 export function proxy(request: NextRequest) {
+  // External ingest is authenticated by the backend Bearer dependency.
+  // Do not bypass Basic authentication for any other application route.
+  if (["/api/ingest", "/api/ingest/batch", "/api/ingest/categories", "/openapi-action.json"].includes(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+  if (request.nextUrl.pathname === "/api/categories" && /^Bearer /i.test(request.headers.get("authorization") || "")) {
+    return NextResponse.next();
+  }
+  const articleApi = /^\/api\/articles(?:\/.*)?$/.test(request.nextUrl.pathname) || request.nextUrl.pathname === "/api/tags";
+  if (articleApi && !/^Basic /i.test(request.headers.get("authorization") || "")) {
+    return NextResponse.next(); // Backend authenticates external Article clients, including missing/invalid tokens.
+  }
   const username = process.env.APP_USERNAME;
   const password = process.env.APP_PASSWORD;
   if (!username || !password) {

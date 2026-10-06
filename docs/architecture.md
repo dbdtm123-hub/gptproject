@@ -1,106 +1,68 @@
-# AI 라이프로그 아키텍처
+# AutoLog 개인 기술 블로그 아키텍처
 
-## 목표와 단계
+## 유지한 구조와 변경점
 
-자연어 입력을 독립적인 기록으로 분리하고, 기존 카테고리를 재사용하거나 생성해
-시간순으로 조회하는 개인용 서비스다. 현재 API·DB·AI 분류·Next.js UI와 운영 배포 구성을 구현했다.
-
-1. FastAPI, PostgreSQL, Alembic, 수동 입력 CRUD, Docker Compose, 통합 테스트.
-2. OpenAI Structured Outputs + Pydantic 검증, 여러 기록 분리, 일괄 저장.
-3. Next.js 입력 화면, 타임라인, 카테고리 필터, 카드와 상세 화면.
-4. frontend/backend/PostgreSQL Kubernetes 구성. 이후 주간/월간 요약과 관제는 확장 단계다.
-
-현재 전체 운영 배포 기반은 **OpenStack Kubernetes/containerd/Cilium**에서
-실행하며 **Podman**으로 OCI 이미지를 빌드한다. [운영 배포 문서](kubernetes-deployment.md)를 따른다.
-Docker Compose는 개발·통합 테스트 용도로만 사용한다.
-
-## 전체 구조
+FastAPI/SQLAlchemy/Alembic/PostgreSQL, Category, Bearer 인증, 웹 Basic 로그인,
+Next.js standalone 이미지, Podman/GHCR 빌드와 containerd/Cilium Kubernetes 배포를 유지한다.
+Article 중심으로 모델과 UI를 확장한다. 기존 Entry/ingest API와 데이터는 보존하고 UI를 /legacy로 옮긴다.
 
 ```mermaid
 flowchart LR
-  User[사용자] --> Web[Next.js]
-  Web --> API[FastAPI /api]
+  Chat[ChatGPT 대화] --> Writer[GPT가 글 작성 및 기존 주제 선택]
+  Writer -->|HTTPS Bearer| Proxy[Next.js API 프록시]
+  Browser[개인 블로그 UI] -->|Basic 로그인| Proxy
+  Proxy --> API[FastAPI Article API]
   API --> DB[(PostgreSQL)]
-  API --> AI[OpenAI Structured Outputs]
-  API -. 향후 .-> Metrics[Prometheus / Grafana]
-  API -. 향후 .-> Logs[Loki / Alloy]
 ```
 
-OpenAI 키는 백엔드 환경변수로만 전달한다. 프론트엔드에는 키를 전달하지 않는다.
-`/api/entries/parse`가 기존 카테고리와 입력을 전달해 구조화된 후보 목록을
-반환한다. Pydantic으로 항목 수, 문자열 길이, 중요도, 날짜 등을 검증한다.
-사용자 확인 뒤 `/api/entries/batch`에서 하나의 트랜잭션으로 저장한다.
-AI 출력은 신뢰하지 않으며 검증 실패 시 저장하지 않는다.
+Article 경로는 AI provider를 호출하지 않는다. 선택적 이전 Entry 분류 모듈 app/ai.py는 별도로 유지한다.
+외부 API의 Bearer를 그대로 전달하고 웹 요청에만 서버 Secret의 API_TOKEN을 주입한다.
+브라우저는 토큰을 받지 않는다. 공개 Action schema와 health만 인증 없이 접근 가능하다.
 
-## 데이터 설계
+## Article 데이터
 
-- `categories`: UUID `id`, 고유한 `name`, UTC `created_at`.
-- `entries`: UUID `id`, UTC `created_at`와 `occurred_at`, `raw_text`,
-  FK `category_id`, `subcategory`, `title`, `summary`, JSONB 문자열 배열 `tags`,
-  1~5 범위 `importance`(기본값 3).
-- API의 `category`는 관계를 통해 카테고리 이름을 반환한다. 중복된 이름을 기록 테이블에
-  저장하지 않는다. 같은 이름은 공백 제거 후 재사용한다(대소문자는 구별한다).
-- 카테고리는 기록 생성/수정 때 PostgreSQL upsert로 생성/재사용한다.
-  동시 요청에서도 고유 제약으로 중복을 막는다.
-- 카테고리 삭제는 현재 제공하지 않는다. 기록을 지워도 카테고리는 유지된다.
-- `(occurred_at, id)` 및 `(category_id, occurred_at, id)` 인덱스가 타임라인 조회를 지원한다.
-- 주간/월간 요약은 추후 기간과 생성 이력을 갖는 별도 테이블로 확장한다.
+- UUID id, title, 고유 slug, category_id FK, subcategory, summary, 핵심 content_markdown.
+- JSONB tags, UTC created_at/updated_at, source_type, nullable source_reference, draft/published status.
+- related_articles는 article_links의 자기참조 FK로 표현한다. 존재하는 글만 연결하며 자기 참조는 거절한다.
+  글 삭제 시 해당 관련 링크만 CASCADE 정리하고 다른 글은 보존한다. 링크는 방향이 있다.
+- Category는 Entry와 공유한다. 정확한 이름(공백 제거)을 고유 제약과 PostgreSQL upsert로 재사용한다.
+- 목록에는 요약만 반환하며 본문은 상세 API에서 읽는다. 제목/요약/본문 ILIKE 검색과 태그/카테고리/상태 필터를 지원한다.
+- 수정 시 updated_at을 갱신한다. expected_updated_at을 전달한 수정은 stale version을 409로 차단한다.
+- 상태는 개인 소유자의 초안/완성 구분이다. 공개 발행이나 사용자별 권한 분리는 추가 범위다.
 
-`occurred_at`은 실제 사건 시각, `created_at`은 저장 시각이다. 사건 시각을 생략하면
-현재 UTC 시각을 사용한다. 시간대 없는 시각은 거절하며, 한국 시각은 `+09:00`을 붙인다.
-프론트엔드가 표시할 때 사용자의 시간대로 변환한다.
+## upsert와 동시성
 
-## 디렉터리
+같은 slug 또는 명시적 target_article_id를 기준으로 생성/갱신한다. 관련성 판단은 GPT가
+검색과 상세 조회 후 수행한다. 자동 fuzzy matching으로 임의의 글을 덮어쓰지 않는다.
+replace는 본문 교체, append는 Markdown 이어쓰기다. 생략한 선택 메타데이터는 기존 값을 유지한다.
+append의 태그/관련 링크는 합치며 병합 후 길이도 검증한다.
+동일 slug 생성에는 transaction advisory lock, 기존 글 갱신에는 row lock을 사용한다.
+DB 실패는 rollback하며 응답 불확실 시 자동 append 재시도를 피한다.
 
-```text
-gptproject/
-├── backend/
-│   ├── app/               # 설정, DB, 모델, 스키마, API
-│   ├── alembic/versions/  # 명시적인 DB 변경 이력
-│   ├── tests/             # PostgreSQL 통합 테스트
-│   ├── pyproject.toml
-│   ├── requirements*.txt  # 고정된 의존성
-│   └── Dockerfile
-├── frontend/              # Next.js UI, 인증, API 프록시, production 이미지
-├── k8s/                   # 단계별 운영 매니페스트 (platform/db/migration/backend 등)
-├── scripts/render-k8s.py   # GHCR image, PVC/emptyDir, NodePort/Ingress 선택
-├── docs/
-├── .env.example
-└── docker-compose.yml
-```
+## UI와 안전한 Markdown
 
-## API
+메인 목록, 검색/카테고리/태그/상태 필터, /articles/UUID 상세, /articles/new 작성,
+/articles/UUID/edit 수정 화면이 있다. react-markdown + remark-gfm으로 목록·표·인용·fenced code를 렌더링한다.
+raw HTML은 skipHtml로 제거하고 안전하지 않은 URL scheme도 renderer가 차단한다. dangerouslySetInnerHTML을 사용하지 않는다.
+상세 페이지는 관련 글을 링크로 표시한다. 편집은 전체 Markdown 미리보기와 optimistic version을 사용한다.
+목록/상세는 보이는 동안 3초마다 재조회하며 편집 중에는 입력을 자동 덮어쓰지 않는다.
 
-| 메서드 | 경로 | 동작 |
-| --- | --- | --- |
-| POST | `/api/entries` | 검증된 기록 하나 저장, 카테고리 재사용/생성 |
-| POST | `/api/entries/parse` | OpenAI structured JSON 검증 후 후보 반환, 저장 없음 |
-| POST | `/api/entries/batch` | 1~20개 후보를 하나의 트랜잭션으로 저장 |
-| GET | `/api/entries` | 사건 시각 내림차순, 카테고리/기간 필터, 페이지 |
-| GET | `/api/entries/{id}` | 기록 상세 |
-| PATCH | `/api/entries/{id}` | 제공한 필드 수정 |
-| DELETE | `/api/entries/{id}` | 기록 삭제 |
-| GET | `/api/categories` | 카테고리 목록 |
-| GET | `/health/live` | 프로세스 생존 확인 |
-| GET | `/health/ready` | DB 연결과 마이그레이션 테이블 확인 |
+## migration과 운영
 
-타임라인 필터는 `category_id`, `from_at`(포함), `to_at`(미포함),
-`limit`(1~100, 기본 20), `offset`(0 이상)을 사용한다. 응답은 `items`, `total`,
-`limit`, `offset`이다. 동률은 UUID 내림차순으로 정렬한다.
-기간 경계로 일/주/월 조회를 지원한다. offset 페이지는 대량 기록에서 향후 커서 방식으로 확장한다.
+0001의 Entry/Category 뒤에 0002가 Article과 관계 테이블을 추가한다. 기존 Entry를 삭제하거나 자동 변환하지 않는다.
+Alembic upgrade/check로 schema를 확인하고 migration Job 완료 후 API/UI를 rollout한다.
+backend readiness는 entries/categories/articles 테이블과 API_TOKEN 설정을 확인한다.
+frontend readiness는 DB 준비와 backend 토큰 일치를 전체 2.5초 내 확인한다.
 
-## 실행·운영 경계
+PostgreSQL은 PVC 기본, StorageClass 미구성 시 local PV 예시, 테스트 전용 emptyDir 옵션을 사용한다.
+서비스는 frontend NodePort 기본, ChatGPT Action에는 선택적 TLS Ingress와 외부 HTTPS 도메인이 필요하다.
+기존 README의 Secret/ConfigMap/보안그룹/백업/롤백 절차를 그대로 사용한다. DB는 단일 replica다.
 
-개발·테스트 Compose는 PostgreSQL healthcheck와 migration 성공 후 백엔드를 시작한다.
-운영 Kubernetes는 PostgreSQL 준비 → Alembic Job 완료 → backend/frontend rollout
-순서로 배포한다. API worker는 테이블을 자동 생성하지 않는다. 운영 데이터는 PVC에 보존한다.
-StorageClass 없는 환경에서는 local PV 예시를 사용하고, 테스트만 명시적으로 emptyDir를 선택한다.
-Podman과 containerd는 GHCR 이미지를 통해 연결된다. 기본 latest에는 Always pull과 rollout restart가 필요하다.
+## 파일
 
-프론트엔드의 Basic 인증이 페이지와 같은 origin의 /api 프록시를 보호한다.
-백엔드는 내부 ClusterIP이며 OpenAI 키는 backend Secret에만 주입한다.
-NodePort HTTP는 접속 IP를 제한한 테스트용이다. 개인 기록의 외부 운영에는 TLS를 사용한다.
-CORS는 환경변수의 명시적 origin 목록만 허용하며 인증 기능을 대신하지 않는다.
-운영에서는 별도 Secret과 비밀번호를 사용한다. 기본 외부 서비스는 frontend NodePort이며
-선택적 Cilium Ingress는 TLS 준비 후 frontend로 연결한다. PostgreSQL은 단일 replica로
-HA가 아니며 백업·복원 절차가 필요하다.
+- backend/app/articles.py, article_schemas.py, models.py: 저장·검색·관계·검증.
+- backend/alembic/versions/0002_articles.py, tests/test_articles.py: migration과 회귀/동시성 검사.
+- frontend/app/page.tsx, app/articles/, components/: 블로그·편집·Markdown.
+- frontend/app/legacy/: 이전 Entry 화면.
+- docs/actions.openapi.json, chatgpt-actions.md, examples/nfs-article.json: Action 계약과 acceptance 예제.
+- scripts/submit-article.py: 비밀 값을 출력하지 않는 API 제출 예제.

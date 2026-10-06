@@ -46,6 +46,11 @@ spec:
             - configMapRef:
                 name: lifelog-config
           env:
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: lifelog-api
+                  key: API_TOKEN
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

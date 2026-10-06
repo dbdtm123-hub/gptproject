@@ -1,4 +1,5 @@
 import os
+import secrets
 
 import pytest
 from alembic import command
@@ -13,6 +14,7 @@ test_url = os.environ.get("TEST_DATABASE_URL")
 if not test_url or not (make_url(test_url).database or "").endswith("_test"):
     raise RuntimeError("Set TEST_DATABASE_URL to a dedicated PostgreSQL database ending in _test")
 os.environ["DATABASE_URL"] = test_url
+os.environ["API_TOKEN"] = secrets.token_urlsafe(48)
 
 from app.database import get_session  # noqa: E402
 from app.main import app  # noqa: E402
@@ -42,7 +44,7 @@ def client(db_session):
         yield db_session
 
     app.dependency_overrides[get_session] = override_session
-    with TestClient(app) as client:
+    with TestClient(app, headers={"Authorization": "Bearer " + os.environ["API_TOKEN"]}) as client:
         yield client
     app.dependency_overrides.clear()
 

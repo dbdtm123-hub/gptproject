@@ -25,6 +25,8 @@ class Classification(BaseModel):
 
 def parse_entries(payload: ParseRequest, categories: list[str]) -> list[EntryCreate]:
     settings = get_settings()
+    if not settings.enable_openai_classification:
+        raise HTTPException(503, "Server AI classification is disabled. Structured ingest and manual entry are available.")
     key = settings.openai_api_key
     if key is None or not key.get_secret_value():
         raise HTTPException(503, "OpenAI key is not configured. Manual entry is available.")

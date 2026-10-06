@@ -1,0 +1,19 @@
+{
+  "title": "OpenStack 위 Kubernetes에 NFS 동적 스토리지 구성하기",
+  "slug": "openstack-kubernetes-nfs-dynamic-storage",
+  "category": "홈랩",
+  "subcategory": "Kubernetes",
+  "summary": "NFS 동적 PVC 구성, ContainerCreating 원인 분석과 nfs-common을 Ansible로 설치한 해결 과정을 정리한다.",
+  "content_markdown": "# OpenStack 위 Kubernetes에 NFS 동적 스토리지 구성하기\n\n## 구성 환경\n\n- OpenStack 위 Ubuntu 24.04 VM\n- Kubernetes 3노드, containerd, Cilium\n- 기존 NFS Server와 공유 export 경로\n- 이미지 빌드: Podman, 레지스트리: GHCR\n\n이 글은 대화를 기술 글로 저장하는 예제다. 실제 서버 주소와 export 경로는 환경에 맞게 정한다.\n\n## NFS와 StorageClass를 선택한 이유\n\n애플리케이션 Pod가 재생성되어도 데이터가 남으려면 컨테이너 파일시스템 밖에 저장해야 한다.\nPVC는 애플리케이션의 저장 공간 요청이고 StorageClass는 그 요청을 어떤 방식으로 충족할지 정의한다.\nNFS subdirectory provisioner는 하나의 NFS 공유 아래에 PVC별 하위 디렉터리를 만들어 동적 프로비저닝한다.\nNFS Server 자체를 설치하거나 고가용성으로 만들어 주는 컴포넌트는 아니다.\n\n## 구축 과정\n\n### 1. 노드의 NFS 클라이언트 준비\n\nNFS 볼륨 mount는 컨테이너 안이 아니라 노드에서 수행된다. 스케줄링 대상 노드에 클라이언트 도구를 설치한다.\n\n```bash\nsudo apt update\nsudo apt install -y nfs-common\n```\n\n여러 노드에는 Ansible을 사용해 같은 설정을 적용한다.\n\n```yaml\n- name: Install NFS client tools on Kubernetes nodes\n  hosts: kubernetes_nodes\n  become: true\n  tasks:\n    - name: Install nfs-common\n      ansible.builtin.apt:\n        name: nfs-common\n        state: present\n        update_cache: true\n```\n\n### 2. Provisioner 설치\n\nNFS_SERVER와 NFS_EXPORT_PATH는 실제 네트워크에서 노드가 접근 가능한 값으로 설정한다.\n\n```bash\nhelm repo add nfs-subdir-external-provisioner \\\n  https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/\nhelm repo update\nhelm upgrade --install nfs-provisioner \\\n  nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \\\n  --namespace storage --create-namespace \\\n  --set nfs.server=\"$NFS_SERVER\" \\\n  --set nfs.path=\"$NFS_EXPORT_PATH\" \\\n  --set storageClass.name=nfs-client\n```\n\n### 3. PVC와 실제 mount 확인\n\n```yaml\napiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: nfs-smoke\nspec:\n  accessModes: [ReadWriteMany]\n  storageClassName: nfs-client\n  resources:\n    requests:\n      storage: 1Gi\n```\n\nPVC를 생성한 뒤 Bound 여부를 보고 테스트 Pod에서 파일을 쓰고 다시 읽는다.\n용량 요청이 NFS 서버의 물리적 quota를 자동 보장하는 것은 아니므로 서버 용량도 관리한다.\n\n## 발생한 문제\n\nprovisioner Pod가 ContainerCreating 상태에서 진행되지 않았다.\n애플리케이션 로그가 나오기 전 단계였으므로 Pod 이벤트부터 확인했다.\n\n```bash\nkubectl -n storage get pods -o wide\nkubectl -n storage describe pod PROVISIONER_POD_NAME\nkubectl -n storage get events --sort-by=.lastTimestamp\n```\n\n## 원인\n\nworker 노드에 nfs-common이 설치되지 않아 kubelet의 NFS mount를 수행할 수 없었다.\nPod 이미지에 도구를 넣어도 노드에서 실행되는 mount의 문제는 해결되지 않는다.\n\n## 해결\n\nAnsible로 스케줄링 대상 노드에 nfs-common을 설치하고 provisioner Pod의 이벤트와 Ready 상태를 다시 확인한다.\n같은 증상이 남으면 NFS export 권한, 공유 경로, 노드 라우팅과 서버 방화벽도 확인한다.\n보안그룹과 Cilium 정책은 실제 트래픽 경로에 맞추고 전체 포트를 무조건 개방하지 않는다.\n\n## 관련 운영 문제\n\nGHCR 이미지는 Podman으로 빌드하고 push한다. Kubernetes는 containerd가 이미지를 가져와 실행한다.\nCompose DATABASE_URL 오류는 호스트명과 비밀번호 인코딩을 함께 점검한다.\nCompose 내부 DB 호스트는 db이고 Kubernetes에서는 PostgreSQL Service 이름이다.\n키와 비밀번호는 Git/YAML에 적지 않고 환경변수와 Secret을 사용한다.\n\n## 최종 구조\n\n**PVC → StorageClass → NFS Provisioner → NFS Server**\n\n| 구성요소 | 역할 |\n| --- | --- |\n| PVC | 앱의 볼륨 요청 |\n| StorageClass | 사용할 provisioner와 정책 |\n| NFS Provisioner | PVC별 하위 디렉터리와 PV 생성 |\n| NFS Server | 실제 공유 데이터 저장 |\n\n## 오늘 배운 것\n\n1. PVC 요청, StorageClass 정책, 실제 스토리지 서버는 역할이 다르다.\n2. ContainerCreating에서는 로그보다 Pod 이벤트가 먼저 단서를 제공한다.\n3. NFS 클라이언트는 스케줄링 대상 노드에도 설치해야 한다.\n4. 반복되는 노드 설정은 Ansible로 관리하면 누락을 줄일 수 있다.\n5. 기본 StorageClass가 없는 환경에서는 PVC에 클래스를 명시하고 백업을 따로 준비한다.\n",
+  "tags": [
+    "OpenStack",
+    "Kubernetes",
+    "NFS",
+    "StorageClass",
+    "Ansible"
+  ],
+  "source_type": "chatgpt",
+  "source_reference": "example:chatgpt-nfs-conversation",
+  "related_articles": [],
+  "status": "published"
+}
