@@ -1,0 +1,30 @@
+# OPTIONAL: replace node hostname/path and prepare that directory on the selected VM.
+# Apply before database manifests; render with --storage-class autolog-local.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: autolog-local
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: autolog-postgres-local
+spec:
+  capacity:
+    storage: 20Gi
+  volumeMode: Filesystem
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: autolog-local
+  local:
+    path: /var/lib/autolog/postgres
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [REPLACE_WITH_UBUNTU_NODE_NAME]

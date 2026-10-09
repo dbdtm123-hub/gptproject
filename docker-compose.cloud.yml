@@ -1,0 +1,25 @@
+# Cloud-only proxy DNS/trust; normal local development uses docker-compose.yml.
+# Run with scripts/cloud-build.py, which derives these values without saving credentials.
+services:
+  backend:
+    build:
+      extra_hosts:
+        - "${CLOUD_PROXY_HOST:?Use scripts/cloud-build.py}:${CLOUD_PROXY_IP:?Use scripts/cloud-build.py}"
+      secrets:
+        - build_ca
+  migrate:
+    build:
+      extra_hosts:
+        - "${CLOUD_PROXY_HOST:?Use scripts/cloud-build.py}:${CLOUD_PROXY_IP:?Use scripts/cloud-build.py}"
+      secrets:
+        - build_ca
+  frontend:
+    build:
+      extra_hosts:
+        - "${CLOUD_PROXY_HOST:?Use scripts/cloud-build.py}:${CLOUD_PROXY_IP:?Use scripts/cloud-build.py}"
+      secrets:
+        - build_ca
+
+secrets:
+  build_ca:
+    file: ${CLOUD_CA_BUNDLE:?Use scripts/cloud-build.py}
