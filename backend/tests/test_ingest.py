@@ -19,6 +19,7 @@ from app.models import Entry
 @pytest.mark.parametrize("path", ["/api/ingest", "/api/ingest/batch", "/api/entries"])
 def test_token_required(client, payload, authorization, path):
     headers = dict(client.headers)
+    cookies = dict(client.cookies); client.cookies.clear()
     client.headers.pop("authorization", None)
     try:
         body = {"entries": [payload]} if path.endswith("/batch") else payload
@@ -27,13 +28,14 @@ def test_token_required(client, payload, authorization, path):
         assert response.headers["www-authenticate"] == "Bearer"
     finally:
         client.headers.update(headers)
+        client.cookies.update(cookies)
     assert client.get("/api/entries").json()["total"] == 0
 
 
 def test_missing_server_token_fails_closed(client, payload, monkeypatch):
     monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(api_token=None))
     assert client.post("/api/ingest", json=payload).status_code == 503
-    assert client.get("/api/categories").status_code == 503
+    assert client.get("/api/categories").status_code == 200
     assert client.get("/health/live").status_code == 200
 
 
@@ -130,8 +132,11 @@ def test_action_schema_is_public_scoped_and_secured(client):
     assert set(schema["paths"]) == {"/api/articles", "/api/articles/upsert", "/api/articles/{article_id}", "/api/categories", "/api/tags"}
     assert schema["components"]["securitySchemes"]["ApiToken"] == {"type": "http", "scheme": "bearer"}
     for path in schema["paths"].values():
-        for operation in path.values():
-            assert operation["security"] == [{"ApiToken": []}]
+        for method, operation in path.items():
+            if method == "get":
+                assert not operation.get("security")
+            else:
+                assert operation["security"] == [{"ApiToken": []}]
     assert schema["paths"]["/api/articles/upsert"]["post"]["operationId"] == "upsertArticle"
     assert "API_TOKEN" not in str(schema)
 
@@ -145,10 +150,10 @@ def test_checked_in_action_schema_matches_backend(client):
 
 
 @pytest.mark.parametrize("authorization", [None, "Bearer invalid", "Basic dGVzdDp0ZXN0"])
-def test_category_api_requires_token(client, authorization):
+def test_category_api_is_public(client, authorization):
     headers = dict(client.headers)
     client.headers.pop("authorization", None)
     try:
-        assert client.get("/api/categories", headers={"Authorization": authorization} if authorization else {}).status_code == 401
+        assert client.get("/api/categories", headers={"Authorization": authorization} if authorization else {}).status_code == 200
     finally:
         client.headers.update(headers)

@@ -5,7 +5,6 @@ password, never a production password or invented OpenAI credential.
 Run with backend/.venv/bin/python after dependency installation.
 """
 import argparse
-import base64
 import json
 import os
 from pathlib import Path
@@ -48,9 +47,9 @@ else:
     opener = build_opener(ProxyHandler({}))
     with opener.open("http://127.0.0.1:3000/health/ready", timeout=10) as response:
         assert json.load(response)["status"] == "ready"
-    username = env.get("APP_USERNAME") or values.get("APP_USERNAME") or "autolog"
-    authorization = "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()
-    request = Request("http://127.0.0.1:3000/api/articles", headers={"Authorization": authorization})
+    request = Request("http://127.0.0.1:3000/api/articles")
     with opener.open(request, timeout=10) as response:
-        assert {"items", "total", "limit", "offset"}.issubset(json.load(response))
-    print("Development frontend, authenticated API proxy and DB readiness verified.")
+        page = json.load(response)
+        assert {"items", "total", "limit", "offset"}.issubset(page)
+        assert all(item["status"] == "published" for item in page["items"])
+    print("Public blog, published-only API proxy and DB readiness verified.")

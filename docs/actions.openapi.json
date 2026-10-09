@@ -28,12 +28,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "ApiToken": []
-          }
-        ]
+        }
       }
     },
     "/api/articles": {
@@ -87,11 +82,6 @@
         ],
         "summary": "Search titles, summaries and Markdown; filter category, tag, status or exact slug",
         "operationId": "listArticles",
-        "security": [
-          {
-            "ApiToken": []
-          }
-        ],
         "parameters": [
           {
             "name": "q",
@@ -292,11 +282,6 @@
         ],
         "summary": "Get Article",
         "operationId": "getArticle",
-        "security": [
-          {
-            "ApiToken": []
-          }
-        ],
         "parameters": [
           {
             "name": "article_id",
@@ -306,6 +291,26 @@
               "type": "string",
               "format": "uuid",
               "title": "Article Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "draft",
+                    "published"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
             }
           }
         ],
@@ -450,12 +455,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "ApiToken": []
-          }
-        ]
+        }
       }
     }
   },
@@ -1464,6 +1464,31 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "Login": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "format": "password",
+            "title": "Password",
+            "writeOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "Login"
       },
       "ParseRequest": {
         "properties": {

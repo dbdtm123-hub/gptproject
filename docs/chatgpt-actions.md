@@ -7,7 +7,7 @@ AutoLog는 그 글을 검증하고 저장한다. Article API는 서버의 OpenAI
 ## 연결 준비
 
 1. 실제 외부 HTTPS 도메인과 신뢰할 수 있는 TLS 인증서를 준비한다. NodePort HTTP는 로컬 테스트용이다.
-2. 루트 README 순서로 배포하고 lifelog-api Secret의 API_TOKEN을 backend/frontend 서버에 주입한다.
+2. 루트 README 순서로 배포하고 lifelog-api Secret의 API_TOKEN을 backend에만 주입한다.
    create-secret-files.py는 32자 이상 무작위 토큰을 보호 파일로 생성한다. 기존 DB 비밀번호는 유지한다.
 3. ACTION_SERVER_URL을 실제 HTTPS frontend URL로 설정하고 변경된 Deployment를 재시작한다.
 4. GPT 편집기의 Actions에 `https://실제도메인/openapi-action.json`을 가져온다.
@@ -18,8 +18,8 @@ AutoLog는 그 글을 검증하고 저장한다. Article API는 서버의 OpenAI
    공개 GPT 배포 시 플랫폼에서 요구하는 privacy policy도 설정한다.
 
 Action schema는 Article CRUD·upsert·검색·Category·Tag를 노출한다. 기존 Entry/ingest는 호환용으로만 남아 있다.
-웹 Basic 로그인과 외부 Bearer 인증을 함께 지원하며 외부 토큰을 서버 토큰으로 교체하지 않는다.
-모든 웹 글은 개인용 Basic 인증으로 보호된다. published는 글 상태이고 인터넷 공개 권한을 뜻하지 않는다.
+published 조회는 공개, draft 조회는 관리자 세션 전용이며 Bearer Token은 쓰기만 허용한다.
+웹 CMS는 /login → /admin의 HttpOnly 세션을 사용한다. Frontend에는 API Token이 없다.
 
 ## GPT 지시문 예시
 
@@ -30,7 +30,8 @@ Action schema는 Article CRUD·upsert·검색·Category·Tag를 노출한다. �
 필요한 추정은 추정으로 표시하고 비밀번호/API 토큰/개인 키는 본문에서 제거한다.
 
 먼저 listIngestCategories로 기존 카테고리를 확인하고 적절하면 정확히 같은 이름을 사용한다.
-listArticles(q=주제)와 필요하면 slug 검색으로 기존 글을 찾고 getArticle로 본문을 읽는다.
+listArticles(q=주제)와 필요하면 slug 검색으로 기존 published 글을 찾고 getArticle로 본문을 읽는다.
+API Token으로 draft를 읽을 수 없다. 알려진 이전 저장 ID/slug와 버전으로 이어 쓰거나 관리자에게 확인한다.
 충분히 같은 주제면 기존 ID를 target_article_id로 보내고 기존 updated_at을 expected_updated_at으로 보낸다.
 전체 글을 다시 정리하면 mode=replace와 완성된 전체 Markdown을 보낸다.
 후속 작업만 이어 쓰면 mode=append와 추가 섹션을 보낸다. 새 주제는 안정적인 slug로 저장한다.
@@ -51,10 +52,10 @@ related_articles에는 확인된 기존 글의 UUID만 넣는다.
 
 | API | 역할 |
 | --- | --- |
-| GET /api/categories | 기존 카테고리, operationId=listIngestCategories (기존 이름 호환) |
-| GET /api/tags | Article 태그 |
+| GET /api/categories | published 글의 카테고리, operationId=listIngestCategories (기존 이름 호환) |
+| GET /api/tags | published 글의 태그 |
 | GET /api/articles?q=... | 제목·요약·본문 검색, category_id/tag/status/slug 필터, 페이지 |
-| GET /api/articles/{id} | 전체 Markdown, related_articles, updated_at |
+| GET /api/articles/{id} | published Markdown, published 관련 글 ID, updated_at |
 | POST /api/articles | 새 글, 201. 이미 같은 slug가 있으면 409 |
 | POST /api/articles/upsert | 신규 201, 기존 갱신 200 |
 | PATCH /api/articles/{id} | 제공한 필드만 수정 |
@@ -100,6 +101,6 @@ curl --fail "$AUTOLOG_URL/openapi-action.json" --output /tmp/autolog-action-sche
 
 기존 DB/앱 Secret은 그대로 두고 API 토큰만 교체해야 한다면 보호된 파일에서 Secret을 갱신한다.
 새 이미지의 0002 migration Job을 완료한 뒤 backend/frontend를 rollout한다. 자세한 명령은 루트 README를 따른다.
-토큰 교체 시 두 Deployment를 재시작하고 Action의 인증 값도 바꾼다. 교체 중 외부 쓰기는 잠시 멈춘다.
+토큰 교체 시 backend Deployment를 재시작하고 Action의 인증 값도 바꾼다. 교체 중 외부 쓰기는 잠시 멈춘다.
 Secret 값이나 실제 토큰 파일 내용을 출력하지 않고 안전한 비밀 저장소에 보관한다.
 OpenAI Secret은 Article 기능에 필요하지 않으며 ENABLE_OPENAI_CLASSIFICATION=false를 유지해도 된다.

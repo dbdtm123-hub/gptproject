@@ -19,7 +19,7 @@ export default function Blog() {
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async (signal: AbortSignal) => {
-    const params = new URLSearchParams({ limit: String(pageSize), offset: String(page * pageSize) });
+    const params = new URLSearchParams({ limit: String(pageSize), offset: String(page * pageSize), status: "published" });
     if (category) params.set("category_id", category);
     if (tag) params.set("tag", tag);
     if (query) params.set("q", query);
@@ -53,7 +53,7 @@ export default function Blog() {
   return <main className="blog">
     <header className="blog-header"><div><span className="eyebrow">대화에서 지식으로</span><h1>AutoLog</h1>
       <p>작업 과정과 문제 해결을 오래 읽을 수 있는 기술 글로 남깁니다.</p></div>
-      <Link className="button" href="/articles/new">직접 작성</Link></header>
+      <Link className="button" href="/admin">관리자</Link></header>
     <nav className="category-index" aria-label="카테고리">
       {[{ id: "", name: "전체" }, ...categories].map(c => <button key={c.id}
         type="button" className={`category-tab${category === c.id ? " selected" : ""}`}

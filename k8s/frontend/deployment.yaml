@@ -43,26 +43,11 @@ spec:
             - name: http
               containerPort: 3000
           env:
-            - name: API_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: lifelog-api
-                  key: API_TOKEN
             - name: BACKEND_URL
               valueFrom:
                 configMapKeyRef:
                   name: lifelog-config
                   key: BACKEND_URL
-            - name: APP_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: lifelog-app
-                  key: APP_USERNAME
-            - name: APP_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: lifelog-app
-                  key: APP_PASSWORD
           resources:
             requests:
               cpu: 100m

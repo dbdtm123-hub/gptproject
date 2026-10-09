@@ -13,16 +13,18 @@ flowchart LR
 ```
 
 글 목록, 카테고리·태그·상태 필터, 제목/요약/본문 검색, Markdown 상세 페이지와 코드 블록,
-관련 글, 작성일/수정일, 직접 작성·편집·삭제를 제공한다. draft/published는 개인 지식 베이스의
-상태 구분이며 published 글도 웹 Basic 인증으로 보호한다. 공개 발행 권한 모델은 아직 제공하지 않는다.
+관련 글과 작성일/수정일을 공개한다. **published는 로그인 없이 읽을 수 있고 draft는 관리자만 읽는다.**
+`/login`에서 로그인한 관리자는 `/admin`에서 작성·수정·삭제·발행 상태를 관리한다.
+[공개 블로그와 관리자 CMS 권한·배포 절차](docs/public-cms.md)를 참고한다.
 
 [ChatGPT Action 연동](docs/chatgpt-actions.md), [아키텍처](docs/architecture.md),
 [검증 기록](docs/verification.md), [NFS 블로그 요청 예제](docs/examples/nfs-article.json)를 참고한다.
 
 ## Article API와 기존 글 이어쓰기
 
-모든 backend 데이터 API는 `Authorization: Bearer <API_TOKEN>`을 요구한다.
-웹 UI는 Basic 로그인 뒤 Next.js 서버에서 토큰을 전달하며 브라우저에 토큰을 노출하지 않는다.
+공개 GET은 published 글만 반환한다. 목록의 `status=draft`, draft 상세, 이전 Entry 조회는 관리자 세션이 필요하다.
+쓰기 API는 관리자 HttpOnly 세션 또는 `Authorization: Bearer <API_TOKEN>`을 요구한다.
+API Token은 쓰기 전용이며 draft 읽기 권한을 부여하지 않는다. Frontend에는 API Token을 주입하지 않는다.
 
 | 메서드 | 경로 | 용도 |
 | --- | --- | --- |
@@ -69,10 +71,10 @@ Docker Compose는 개발·통합 테스트 전용이다. Kubernetes 노드에 Do
 
 브라우저 → Frontend NodePort(30080) → Next.js 서버 /api 프록시 → Backend ClusterIP → PostgreSQL.
 ChatGPT → HTTPS frontend `/api/articles` 또는 `/api/articles/upsert` → Bearer 검증 → Backend → PostgreSQL.
-웹 UI의 Article API와 이전 Entry 프록시는 Basic 로그인 후 서버에서 API 토큰을 주입한다.
-외부 Article API·태그·카테고리 및 이전 ingest 호출에는 클라이언트 Bearer 헤더를 그대로 전달한다.
+웹 로그인은 backend가 서명한 8시간 HttpOnly/SameSite=Strict 쿠키를 사용한다.
+Next.js는 관리자 세션 쿠키 또는 외부 클라이언트의 Bearer 헤더를 전달하며 API Token을 만들거나 주입하지 않는다.
 열린 UI는 외부 저장을 3초마다 확인하고 창/탭 복귀 시에도 새로 조회한다.
-토큰/로그인 설정이 빠지면 해당 보호 경로는 닫힌다. health와 Action schema는 공개한다.
+토큰/로그인 설정이 빠지면 해당 보호 경로는 닫힌다. 공개 글·검색·published 카테고리/태그·health·Action schema는 공개한다.
 선택적 OpenAI 분류는 이전 `/legacy` Entry 기능에만 적용한다. Article API는 이 설정과 관계없이 OpenAI를 호출하지 않는다.
 
 | 변수 | 주입 대상 | 저장 위치 |
@@ -83,10 +85,10 @@ ChatGPT → HTTPS frontend `/api/articles` 또는 `/api/articles/upsert` → Bea
 | OPENAI_API_KEY | backend만 | lifelog-openai Secret |
 | OPENAI_MODEL | backend | ConfigMap (기본 gpt-4o-mini) |
 | ENABLE_OPENAI_CLASSIFICATION | backend | ConfigMap (기본 false) |
-| API_TOKEN | backend, frontend 서버만 | lifelog-api Secret, 32자 이상 무작위 토큰 |
+| API_TOKEN | backend만 | lifelog-api Secret, 32자 이상 무작위 토큰 |
 | ACTION_SERVER_URL | backend | ConfigMap, 외부 HTTPS URL |
 | BACKEND_URL | frontend 서버 | ConfigMap (http://lifelog-backend:8000) |
-| APP_USERNAME, APP_PASSWORD | frontend 서버 | lifelog-app Secret |
+| APP_USERNAME, APP_PASSWORD | backend만 | lifelog-app Secret |
 | CORS_ORIGINS | backend | ConfigMap, JSON 배열 |
 
 키와 비밀번호를 YAML, Git, 이미지, NEXT_PUBLIC 변수에 넣지 않는다. .env.example의 빈 값은
@@ -283,7 +285,7 @@ kubectl -n lifelog get pods,svc,pvc
 
 emptyDir에서는 DB용 PVC가 없는 것이 정상이다. Job 실패 시 원인을 조사하고 API를 업데이트하지 않는다.
 API/UI는 기본 2 replicas이며 CPU/memory requests·limits, startup/readiness/liveness probe, PDB를 포함한다.
-DB liveness와 API liveness는 각각 분리되고 frontend readiness는 backend 준비와 로그인·API 토큰 일치를 확인한다.
+DB liveness와 API liveness는 각각 분리되고 frontend readiness는 backend 준비를 확인한다. backend readiness는 DB·API Token·관리자 로그인 설정을 확인한다.
 
 NetworkPolicy는 frontend→backend→DB만 허용하며 CiliumNetworkPolicy는 frontend의 NodePort/Ingress 접속과
 backend의 api.openai.com HTTPS를 허용한다. DNS 규칙은 kube-system/kube-dns 기준이다.
@@ -303,13 +305,13 @@ export NODE_IP=YOUR_REACHABLE_VM_IP
 curl --fail "http://$NODE_IP:30080/health/live"
 curl --fail "http://$NODE_IP:30080/health/ready"
 # 비밀번호는 curl이 대화형으로 묻는다.
-curl --fail --user YOUR_APP_USERNAME "http://$NODE_IP:30080/api/articles"
+curl --fail "http://$NODE_IP:30080/api/articles"
 ~~~
 
-브라우저에서 http://VM_IP:30080을 열고 Secret의 앱 계정으로 로그인한다.
+브라우저에서 http://VM_IP:30080을 열면 published 글을 읽을 수 있다. 관리자는 /login에서 Secret의 앱 계정으로 로그인한다.
 직접 작성으로 글 생성·검색·필터·상세·수정·삭제를 확인한다. ChatGPT 연동은 Article Action 문서대로
 HTTPS와 Bearer 토큰으로 확인한다. 기존 선택적 Entry 분류만 flag와 OpenAI Secret을 필요로 한다.
-NodePort HTTP는 테스트용이며 Basic 암호와 기록이 암호화되지 않는다.
+NodePort HTTP는 테스트용이며 로그인과 기록이 암호화되지 않는다. 운영에서는 기존 Cloudflare Tunnel HTTPS를 유지한다.
 민감한 개인 기록의 실제 외부 운영은 다음 TLS 옵션이나 별도의 신뢰 TLS reverse proxy를 준비한다.
 
 내부 확인은 다음 명령으로 localhost에만 연결한다.
@@ -318,7 +320,7 @@ NodePort HTTP는 테스트용이며 Basic 암호와 기록이 암호화되지 �
 kubectl -n lifelog port-forward --address 127.0.0.1 service/lifelog-frontend 13000:3000
 # 별도 터미널
 curl --fail http://127.0.0.1:13000/health/ready
-curl --fail --user YOUR_APP_USERNAME http://127.0.0.1:13000/api/categories
+curl --fail http://127.0.0.1:13000/api/categories
 ~~~
 
 ## 7. 선택 옵션: Cilium Ingress + TLS
@@ -328,8 +330,8 @@ ingressController와 필요한 kubeProxyReplacement/Envoy/L7 설정을 활성화
 Helm release를 새 기본값으로 덮어쓰지 않는다. IngressClass cilium과 controller 상태를 확인한다.
 
 실제 도메인과 TLS 인증서를 준비하고 새 디렉터리에 --frontend-service ClusterIP로 다시 render한다.
-이 구성은 frontend로 모든 경로를 보낸다. 웹 경로는 Basic 인증,
-외부 Article API·태그·카테고리와 기존 ingest 경로는 backend Bearer 인증을 사용한다.
+이 구성은 frontend로 모든 경로를 보낸다. published GET은 공개하며 관리자 경로는 서명 세션 인증,
+Article/기존 ingest 쓰기는 backend 세션 또는 Bearer 인증을 사용한다.
 
 ~~~bash
 export LIFELOG_HOST=autolog.your-domain.example
@@ -363,10 +365,10 @@ LB를 쓰면 DNS를 VIP에 연결해 기본 HTTPS 443으로 접속한다. DNS �
 
 ~~~bash
 curl --fail --resolve "$LIFELOG_HOST:443:YOUR_LB_IP" "https://$LIFELOG_HOST/health/ready"
-curl --fail --user YOUR_APP_USERNAME "https://$LIFELOG_HOST/api/articles"
+curl --fail "https://$LIFELOG_HOST/api/articles"
 ~~~
 
-인증 없는 /api 요청이 401인지 확인한다. curl -k로 인증서 검증을 생략하지 않는다.
+인증 없는 published GET은 200, draft 조회와 POST/PATCH/DELETE는 401인지 확인한다. curl -k로 인증서 검증을 생략하지 않는다.
 NodePort 공개 서비스가 필요 없어지면 ClusterIP 적용과 함께 Security Group의 30080 규칙을 제거한다.
 
 ## 8. 장애 확인·업데이트·백업
@@ -393,7 +395,7 @@ kubectl -n kube-system logs -l k8s-app=cilium --tail=100
 - PVC Pending: 기본 Class 존재, local PV의 용량/class/nodeAffinity 또는 CSI 상태를 확인한다.
 - CreateContainerConfigError: Secret 이름/키를 확인한다. Secret 값을 출력하지 않는다.
 - DB 인증 실패: 실제 DB 비밀번호와 Secret이 일치하는지 확인한다.
-- UI 503: 앱 로그인 Secret·API_TOKEN 일치·backend readiness, UI 502: frontend→backend/DNS 정책을 확인한다.
+- UI 503: backend readiness, 로그인 실패: backend의 lifelog-app Secret, UI 502: frontend→backend/DNS 정책을 확인한다.
 - API 401: Bearer 토큰 불일치, API/ready 503: API_TOKEN Secret과 32자 이상 길이를 확인한다.
 - 선택적 AI 503: 기능 flag 꺼짐 또는 OpenAI Secret 미설정. 502/504: 모델·키 권한·FQDN egress를 확인한다.
 
@@ -459,7 +461,7 @@ cd frontend
 npm ci
 npm run typecheck
 npm run build
-# 로컬 Next 개발은 frontend/.env.example을 .env.local로 복사하고 로그인/백엔드 주소/API_TOKEN을 설정한다.
+# 로컬 Next 개발은 frontend/.env.example을 .env.local로 복사하고 BACKEND_URL만 설정한다. 관리자/Token은 backend 환경변수다.
 ~~~
 
 기존 checkout을 사용한다. 명시적 요청 없이 worktree를 만들지 않는다.

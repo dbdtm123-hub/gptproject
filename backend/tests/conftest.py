@@ -15,9 +15,12 @@ if not test_url or not (make_url(test_url).database or "").endswith("_test"):
     raise RuntimeError("Set TEST_DATABASE_URL to a dedicated PostgreSQL database ending in _test")
 os.environ["DATABASE_URL"] = test_url
 os.environ["API_TOKEN"] = secrets.token_urlsafe(48)
+os.environ["APP_USERNAME"] = "admin-test"
+os.environ["APP_PASSWORD"] = secrets.token_urlsafe(32)
 
 from app.database import get_session  # noqa: E402
 from app.main import app  # noqa: E402
+from app.auth import COOKIE_NAME, create_session  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -44,7 +47,7 @@ def client(db_session):
         yield db_session
 
     app.dependency_overrides[get_session] = override_session
-    with TestClient(app, headers={"Authorization": "Bearer " + os.environ["API_TOKEN"]}) as client:
+    with TestClient(app, cookies={COOKIE_NAME: create_session()}, headers={"Authorization": "Bearer " + os.environ["API_TOKEN"]}) as client:
         yield client
     app.dependency_overrides.clear()
 

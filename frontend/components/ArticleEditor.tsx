@@ -37,10 +37,10 @@ export default function ArticleEditor({ id }: { id?: string }) {
       tags: draft.tags.split(",").map(t => t.trim()).filter(Boolean), source_type: draft.source_type,
       source_reference: draft.source_reference.trim() || null, status: draft.status, related_articles: draft.related_articles,
       ...(id ? { expected_updated_at: version } : {}) };
-    try { const saved = await api<Article>(id ? `articles/${id}` : "articles", { method: id ? "PATCH" : "POST", body: JSON.stringify(body) }); router.push(`/articles/${saved.id}`); }
+    try { const saved = await api<Article>(id ? `articles/${id}` : "articles", { method: id ? "PATCH" : "POST", body: JSON.stringify(body) }); router.push("/admin"); }
     catch (e) { setError((e as Error).message); setBusy(false); }
   }
-  return <main className="editor"><nav><Link href={id ? `/articles/${id}` : "/"}>← 돌아가기</Link></nav><h1>{id ? "글 수정" : "직접 작성"}</h1>
+  return <main className="editor"><nav><Link href="/admin">← 돌아가기</Link></nav><h1>{id ? "글 수정" : "직접 작성"}</h1>
     {error && <p className="notice" role="alert">{error}</p>}
     {!loaded ? <p>글을 불러오는 중…</p> : <form onSubmit={save}>
       <section><label>제목<input required maxLength={200} value={draft.title} onChange={e => change("title", e.target.value)} /></label>

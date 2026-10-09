@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api import router
 from app.articles import router as article_router
+from app.auth import router as auth_router, session_key
 from app.config import get_settings
 from app.database import get_session
 
@@ -19,6 +20,7 @@ app.add_middleware(
 )
 app.include_router(router)
 app.include_router(article_router)
+app.include_router(auth_router)
 
 
 @app.get("/openapi-action.json", include_in_schema=False)
@@ -41,6 +43,8 @@ def live() -> dict[str, str]:
 def ready(session: Session = Depends(get_session)) -> dict[str, str]:
     if not get_settings().api_token or not get_settings().api_token.get_secret_value():
         raise HTTPException(status_code=503, detail="API authentication is not configured")
+    if session_key() is None:
+        raise HTTPException(status_code=503, detail="Admin login is not configured")
     try:
         session.execute(text("SELECT id FROM entries LIMIT 1"))
         session.execute(text("SELECT id FROM categories LIMIT 1"))

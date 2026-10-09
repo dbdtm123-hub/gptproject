@@ -6,18 +6,18 @@ import unicodedata
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.article_schemas import ArticleCreate, ArticlePage, ArticleRead, ArticleSummary, ArticleUpdate, ArticleUpsert, Status
-from app.auth import require_api_token
+from app.auth import is_admin, require_write_access
 from app.database import get_session
 from app.models import Article
 from app.repository import get_or_create_category
 
-router = APIRouter(prefix="/api", tags=["articles"], dependencies=[Depends(require_api_token)])
+router = APIRouter(prefix="/api", tags=["articles"])
 DB = Annotated[Session, Depends(get_session)]
 
 
@@ -70,13 +70,13 @@ def new_article(payload: ArticleCreate, session: Session) -> Article:
     return article
 
 
-@router.post("/articles", response_model=ArticleRead, status_code=201, operation_id="createArticle",
+@router.post("/articles", dependencies=[Depends(require_write_access)], response_model=ArticleRead, status_code=201, operation_id="createArticle",
              summary="Save a complete Markdown article written by the client")
 def create_article(payload: ArticleCreate, session: DB) -> Article:
     return save(session, new_article(payload, session))
 
 
-@router.post("/articles/upsert", response_model=ArticleRead, operation_id="upsertArticle",
+@router.post("/articles/upsert", dependencies=[Depends(require_write_access)], response_model=ArticleRead, operation_id="upsertArticle",
              responses={201: {"model": ArticleRead, "description": "New article created"}},
              summary="Create by slug or update an explicitly chosen article; replace or append Markdown")
 def upsert_article(payload: ArticleUpsert, session: DB, response: Response) -> Article:
@@ -123,6 +123,7 @@ def upsert_article(payload: ArticleUpsert, session: DB, response: Response) -> A
             summary="Search titles, summaries and Markdown; filter category, tag, status or exact slug")
 def list_articles(
     session: DB,
+    request: Request,
     q: Annotated[str | None, Query(max_length=200)] = None,
     slug: Annotated[str | None, Query(max_length=200)] = None,
     category_id: UUID | None = None,
@@ -132,6 +133,10 @@ def list_articles(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ArticlePage:
     filters = []
+    if not is_admin(request):
+        if status == "draft":
+            raise HTTPException(401, "Admin login required for drafts")
+        filters.append(Article.status == "published")
     if q and q.strip():
         value = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         filters.append(or_(*(field.ilike("%" + value + "%", escape="\\")
@@ -151,11 +156,21 @@ def list_articles(
 
 
 @router.get("/articles/{article_id}", response_model=ArticleRead, operation_id="getArticle")
-def get_article(article_id: UUID, session: DB) -> Article:
-    return find_article(session, article_id)
+def get_article(article_id: UUID, session: DB, request: Request, status: Status | None = None) -> ArticleRead:
+    article = find_article(session, article_id)
+    admin = is_admin(request)
+    if not admin and article.status != "published":
+        raise HTTPException(401, "Admin login required for drafts")
+    if status is not None and article.status != status:
+        raise HTTPException(404, "Article not found")
+    result = ArticleRead.model_validate(article)
+    if not admin:
+        result.related_articles = [item.id for item in article.related_records if item.status == "published"]
+        result.source_reference = None  # Conversation references belong to the private CMS.
+    return result
 
 
-@router.patch("/articles/{article_id}", response_model=ArticleRead, operation_id="updateArticle")
+@router.patch("/articles/{article_id}", dependencies=[Depends(require_write_access)], response_model=ArticleRead, operation_id="updateArticle")
 def update_article(article_id: UUID, payload: ArticleUpdate, session: DB) -> Article:
     article = find_article(session, article_id, lock=True)
     check_version(article, payload.expected_updated_at)
@@ -170,7 +185,7 @@ def update_article(article_id: UUID, payload: ArticleUpdate, session: DB) -> Art
     return save(session, article)
 
 
-@router.delete("/articles/{article_id}", status_code=204, operation_id="deleteArticle")
+@router.delete("/articles/{article_id}", dependencies=[Depends(require_write_access)], status_code=204, operation_id="deleteArticle")
 def delete_article(article_id: UUID, session: DB) -> Response:
     session.delete(find_article(session, article_id, lock=True))
     session.commit()
@@ -178,6 +193,8 @@ def delete_article(article_id: UUID, session: DB) -> Response:
 
 
 @router.get("/tags", response_model=list[str], operation_id="listTags")
-def list_tags(session: DB) -> list[str]:
-    return list(session.scalars(select(func.jsonb_array_elements_text(Article.tags)).distinct().order_by(
-        func.jsonb_array_elements_text(Article.tags))).all())
+def list_tags(session: DB, request: Request) -> list[str]:
+    query = select(func.jsonb_array_elements_text(Article.tags)).distinct()
+    if not is_admin(request):
+        query = query.where(Article.status == "published")
+    return list(session.scalars(query.order_by(func.jsonb_array_elements_text(Article.tags))).all())

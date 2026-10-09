@@ -1,12 +1,14 @@
 # AutoLog 기술 블로그 UI
 
 Next.js App Router / TypeScript / standalone production 이미지를 유지한다.
-목록·검색·카테고리·태그·상태 필터, Markdown 상세, 작성/수정/미리보기, 관련 글, 삭제를 제공한다.
-기존 Entry UI는 /legacy에 보존한다. published도 개인 웹 Basic 인증으로 보호된다.
+공개 `/`와 `/articles/UUID`는 published 글의 목록·검색·카테고리 탭·태그·Markdown 상세를 제공한다.
+`/login`에서 로그인한 관리자만 `/admin`과 `/admin/articles/new`, `/admin/articles/UUID/edit`를 사용한다.
+이전 작성 URL과 /legacy도 서버에서 관리자 세션을 확인한다.
 
-서버 환경변수: BACKEND_URL, APP_USERNAME, APP_PASSWORD, API_TOKEN. OpenAI 키나 DB credentials를 전달하지 않는다.
-웹 Basic 요청에는 서버 API_TOKEN을 주입하고, 외부 Article/태그/카테고리 Bearer는 그대로 backend에 전달한다.
-공개 /openapi-action.json은 Article 중심 계약이다. 토큰은 브라우저 코드에 넣지 않는다.
+Frontend 서버 환경변수는 BACKEND_URL만 필요하다. API_TOKEN, APP_PASSWORD, OpenAI 키와 DB credentials를 주입하지 않는다.
+로그인 응답은 서명된 세션을 HttpOnly/SameSite=Strict 쿠키로 설정하고 JSON으로 돌려주지 않는다.
+HTTPS에서는 Secure 쿠키를 사용한다. Backend가 공개 읽기/관리자 읽기/쓰기 권한을 최종 검증한다.
+세션 쿠키와 외부 쓰기 Bearer를 그대로 전달하며 API Token을 생성하거나 주입하지 않는다.
 
 react-markdown/remark-gfm은 raw HTML을 실행하지 않고 Markdown·GFM 표·코드 블록을 읽기 좋게 표시한다.
 목록과 상세는 3초마다 재조회한다. 수정은 expected_updated_at으로 충돌을 차단하고 입력을 자동 덮어쓰지 않는다.

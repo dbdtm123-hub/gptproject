@@ -32,3 +32,9 @@ a{color:var(--accent);text-underline-offset:4px}a:hover{text-decoration:underlin
   .blog .article-card { padding: 22px; }
   .blog-pagination { gap: 4px; }
 }
+
+.login { max-width: 560px; }
+.login h1 { font-size: 32px; margin: 28px 0; }
+.admin-entry h2 { margin: 18px 0 10px; }
+.admin-entry p { line-height: 1.8; overflow-wrap: anywhere; }
+.admin > label { max-width: 240px; margin-bottom: 28px; }

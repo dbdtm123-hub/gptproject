@@ -1,24 +1,24 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import AwareDatetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_session
-from app.models import Category, Entry
+from app.models import Article, Category, Entry
 from app.repository import find_entry, get_or_create_category
 from app.schemas import CategoryRead, EntryCreate, EntryPage, EntryRead, EntryUpdate
 from app.schemas import EntryBatch, ParseRequest
 from app.ai import parse_entries
-from app.auth import require_api_token
+from app.auth import is_admin, require_admin, require_write_access
 
-router = APIRouter(prefix="/api", dependencies=[Depends(require_api_token)])
+router = APIRouter(prefix="/api")
 DB = Annotated[Session, Depends(get_session)]
 
 
-@router.get("/capabilities", tags=["configuration"])
+@router.get("/capabilities", dependencies=[Depends(require_admin)], tags=["configuration"])
 def capabilities() -> dict[str, bool]:
     from app.config import get_settings
     settings = get_settings()
@@ -26,14 +26,14 @@ def capabilities() -> dict[str, bool]:
             settings.openai_api_key and settings.openai_api_key.get_secret_value())}
 
 
-@router.post("/entries/parse", response_model=list[EntryCreate], tags=["entries"])
+@router.post("/entries/parse", dependencies=[Depends(require_write_access)], response_model=list[EntryCreate], tags=["entries"])
 def classify_entries(payload: ParseRequest, session: DB) -> list[EntryCreate]:
     categories = list(session.scalars(select(Category.name).order_by(Category.name)).all())
     return parse_entries(payload, categories)
 
 
-@router.post("/entries/batch", response_model=list[EntryRead], status_code=201, tags=["entries"])
-@router.post("/ingest/batch", response_model=list[EntryRead], status_code=201, tags=["ingest"],
+@router.post("/entries/batch", dependencies=[Depends(require_write_access)], response_model=list[EntryRead], status_code=201, tags=["entries"])
+@router.post("/ingest/batch", dependencies=[Depends(require_write_access)], response_model=list[EntryRead], status_code=201, tags=["ingest"],
              operation_id="ingestBatch", summary="Save up to 20 already classified entries atomically")
 def create_batch(payload: EntryBatch, session: DB) -> list[Entry]:
     entries = []
@@ -48,8 +48,8 @@ def create_batch(payload: EntryBatch, session: DB) -> list[Entry]:
     return entries
 
 
-@router.post("/entries", response_model=EntryRead, status_code=status.HTTP_201_CREATED, tags=["entries"])
-@router.post("/ingest", response_model=EntryRead, status_code=201, tags=["ingest"],
+@router.post("/entries", dependencies=[Depends(require_write_access)], response_model=EntryRead, status_code=status.HTTP_201_CREATED, tags=["entries"])
+@router.post("/ingest", dependencies=[Depends(require_write_access)], response_model=EntryRead, status_code=201, tags=["ingest"],
              operation_id="ingestEntry", summary="Validate and save an already classified entry")
 def create_entry(payload: EntryCreate, session: DB) -> Entry:
     data = payload.model_dump(exclude={"category"})
@@ -60,7 +60,7 @@ def create_entry(payload: EntryCreate, session: DB) -> Entry:
     return entry
 
 
-@router.get("/entries", response_model=EntryPage, tags=["entries"])
+@router.get("/entries", dependencies=[Depends(require_admin)], response_model=EntryPage, tags=["entries"])
 def list_entries(
     session: DB,
     category_id: UUID | None = None,
@@ -85,12 +85,12 @@ def list_entries(
     return EntryPage(items=[EntryRead.model_validate(entry) for entry in entries], total=total, limit=limit, offset=offset)
 
 
-@router.get("/entries/{entry_id}", response_model=EntryRead, tags=["entries"])
+@router.get("/entries/{entry_id}", dependencies=[Depends(require_admin)], response_model=EntryRead, tags=["entries"])
 def get_entry(entry_id: UUID, session: DB) -> Entry:
     return find_entry(session, entry_id)
 
 
-@router.patch("/entries/{entry_id}", response_model=EntryRead, tags=["entries"])
+@router.patch("/entries/{entry_id}", dependencies=[Depends(require_write_access)], response_model=EntryRead, tags=["entries"])
 def update_entry(entry_id: UUID, payload: EntryUpdate, session: DB) -> Entry:
     entry = find_entry(session, entry_id)
     if "category" in payload.model_fields_set:
@@ -102,7 +102,7 @@ def update_entry(entry_id: UUID, payload: EntryUpdate, session: DB) -> Entry:
     return entry
 
 
-@router.delete("/entries/{entry_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["entries"])
+@router.delete("/entries/{entry_id}", dependencies=[Depends(require_write_access)], status_code=status.HTTP_204_NO_CONTENT, tags=["entries"])
 def delete_entry(entry_id: UUID, session: DB) -> Response:
     session.delete(find_entry(session, entry_id))
     session.commit()
@@ -113,5 +113,9 @@ def delete_entry(entry_id: UUID, session: DB) -> Response:
             operation_id="listIngestCategories", summary="List existing categories before classifying")
 @router.get("/ingest/categories", response_model=list[CategoryRead], tags=["ingest"],
             summary="Compatibility alias for the category list")
-def list_categories(session: DB) -> list[Category]:
-    return list(session.scalars(select(Category).order_by(Category.name, Category.id)).all())
+def list_categories(session: DB, request: Request) -> list[Category]:
+    query = select(Category)
+    if not is_admin(request):
+        query = query.where(select(Article.id).where(Article.category_id == Category.id,
+                                                   Article.status == "published").exists())
+    return list(session.scalars(query.order_by(Category.name, Category.id)).all())

@@ -123,14 +123,14 @@ def test_article_validation_is_atomic(client, article, change):
     assert client.get("/api/categories").json() == []
 
 
-@pytest.mark.parametrize("path", ["/api/articles", "/api/articles/upsert", "/api/tags"])
+@pytest.mark.parametrize("path", ["/api/articles", "/api/articles/upsert"])
 def test_article_token_auth(client, article, path):
-    headers = dict(client.headers); client.headers.pop("authorization", None)
+    headers = dict(client.headers); cookies = dict(client.cookies); client.cookies.clear(); client.headers.pop("authorization", None)
     try:
         response = client.get(path) if path == "/api/tags" else client.post(path, json=article)
         assert response.status_code == 401
     finally:
-        client.headers.update(headers)
+        client.headers.update(headers); client.cookies.update(cookies)
 
 
 def test_concurrent_upsert_one_topic_and_append_without_lost_updates(engine, article):

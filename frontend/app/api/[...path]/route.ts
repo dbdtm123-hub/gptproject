@@ -7,16 +7,17 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   const { path } = await context.params;
   const route = path.join("/");
   const articleRoute = /^(articles|articles\/(upsert|[0-9a-f-]{36})|tags)$/.test(route);
-  const external = /^(ingest|ingest\/(batch|categories))$/.test(route) ||
-    ((articleRoute || route === "categories") && !/^Basic /i.test(request.headers.get("authorization") || ""));
-  const allowed = articleRoute || /^(ingest|ingest\/(batch|categories)|capabilities|categories|entries|entries\/(parse|batch|[0-9a-f-]{36}))$/.test(route);
+  const authRoute = /^(auth\/(login|logout|me))$/.test(route);
+  const allowed = authRoute || articleRoute || /^(ingest|ingest\/(batch|categories)|capabilities|categories|entries|entries\/(parse|batch|[0-9a-f-]{36}))$/.test(route);
   if (!allowed) return NextResponse.json({ detail: "Not found" }, { status: 404 });
+  const authorization = request.headers.get("authorization");
   if (request.method !== "GET") {
     if (!request.headers.get("content-type")?.startsWith("application/json")) {
       return NextResponse.json({ detail: "JSON is required" }, { status: 415 });
     }
+    // Cookie login/write/logout requests must originate from this site. Bearer clients do not use cookies.
     const origin = request.headers.get("origin");
-    if (origin && !external) {
+    if (origin && (!authorization || authRoute)) {
       try {
         if (new URL(origin).host !== request.headers.get("host")) throw new Error("origin mismatch");
       } catch {
@@ -24,11 +25,16 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       }
     }
   }
+  const secure = request.nextUrl.protocol === "https:" || request.headers.get("x-forwarded-proto") === "https";
+  if (route === "auth/logout") {
+    if (request.method !== "POST") return NextResponse.json({ detail: "Method not allowed" }, { status: 405 });
+    const response = NextResponse.json({ status: "logged_out" }, { headers: { "Cache-Control": "no-store" } });
+    response.cookies.set("autolog_admin", "", { httpOnly: true, secure, sameSite: "strict", path: "/", maxAge: 0 });
+    return response;
+  }
   const backend = process.env.BACKEND_URL;
   if (!backend) return NextResponse.json({ detail: "Backend is not configured" }, { status: 503 });
-  const authorization = external ? request.headers.get("authorization") :
-    (process.env.API_TOKEN ? `Bearer ${process.env.API_TOKEN}` : null);
-  if (!external && !authorization) return NextResponse.json({ detail: "API authentication is not configured" }, { status: 503 });
+  const session = request.cookies.get("autolog_admin")?.value;
   let body: Uint8Array | undefined;
   if (request.body && request.method !== "GET") {
     const reader = request.body.getReader();
@@ -52,12 +58,21 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
     const response = await fetch(`${backend.replace(/\/$/, "")}/api/${route}${request.nextUrl.search}`, {
       method: request.method,
       headers: { "Content-Type": "application/json", Accept: "application/json",
-        ...(authorization ? { Authorization: authorization } : {}) },
+        ...(authorization ? { Authorization: authorization } : {}),
+        ...(session ? { Cookie: `autolog_admin=${session}` } : {}) },
       body: body as BodyInit | undefined,
       cache: "no-store",
       redirect: "error",
       signal: AbortSignal.timeout(75000),
     });
+    if (route === "auth/login" && response.ok) {
+      const login = await response.json();
+      const result = NextResponse.json({ status: "logged_in" }, { headers: { "Cache-Control": "no-store" } });
+      result.cookies.set("autolog_admin", login.session, {
+        httpOnly: true, secure, sameSite: "strict", path: "/", maxAge: login.max_age,
+      });
+      return result; // Session is set only as an HttpOnly cookie; never return it in JSON.
+    }
     return new NextResponse(response.status === 204 ? null : await response.text(), {
       status: response.status,
       headers: { "Content-Type": "application/json", "Cache-Control": "no-store",
