@@ -468,3 +468,9 @@ npm run build
 배포 YAML은 Kubernetes 1.34와 Cilium 1.18 CRD로 검증했다. 실제 cluster 버전의 admission은 단계별
 server-side dry-run으로 다시 확인한다. 이 클라우드에는 Podman/대상 kubeconfig가 없으므로 실제 GHCR
 push와 원격 rollout은 수행하지 않았다. OpenAI 호출 테스트는 mock을 사용했으며 실제 key로 외부 동작을 별도 확인한다.
+
+## 공개 이미지 조회
+
+[Garage read-only image gateway 배포 절차](docs/image-gateway.md): 기존 업로드 RW key와 별도의 reader Secret을 사용한다.
+img.myhomlab.win → image-gateway → Garage 서명 GET/HEAD이며 bucket Website=false를 유지한다.
+기존 autolog hostname/Article/DB/업로드 경로는 유지하며 bucket policy API를 사용하지 않는다.

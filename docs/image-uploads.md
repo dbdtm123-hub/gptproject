@@ -8,12 +8,12 @@ flowchart LR
   Admin[Browser Admin] --> Frontend[AutoLog Frontend]
   Frontend -->|POST /api/uploads multipart + session| Backend[AutoLog Backend]
   Client[외부 Bearer client] --> Frontend
-  Backend -->|S3 API 3900| Garage[Garage]
+  Backend -->|S3 API 3900 / RW key| Garage[Garage]
   Garage --> PVC --> NFS
   Reader[Public Reader] --> Markdown[Article Markdown]
   Markdown --> URL[https://img.myhomlab.win/uploads/...]
   URL --> Cloudflare --> Gateway[GET 전용 image gateway]
-  Gateway -->|/autolog-public/uploads/...| Garage
+  Gateway -->|GetObject / HeadObject / R key| Garage
 ```
 
 ## API와 파일 안전성
@@ -115,47 +115,13 @@ kubectl -n lifelog exec -i deployment/lifelog-backend -- \
 ```
 
 업로드 요청은 bucket을 자동 생성하거나 정책을 변경하지 않는다. 위 setup은 bucket 존재 여부를 확인하고 없는 경우에만 생성한다.
-기존 다른 bucket policy가 있으면 덮지 않고 중단한다. 검토 후 의도적으로 바꿀 때만 --replace-policy를 추가한다.
-유지한 표준 S3 public-read 정책은 GetObject만 허용하며 ListBucket/PutObject/DeleteObject는 허용하지 않는다.
-단, [Garage 공식 S3 호환성 표](https://raw.githubusercontent.com/deuxfleurs-org/garage/master/doc/book/reference-manual/s3-compatibility.md)는 GetBucketPolicy/PutBucketPolicy를 미지원으로 표시한다.
-설치 버전에서 해당 API 지원을 확인한 경우에만 --public-read를 추가한다. 미지원이면 스크립트가 명확히 실패하며 public 허용 완료로 보고하지 않는다.
-create 권한이 없는 backend key라면 Garage 운영 CLI로 bucket을 미리 만들고 setup을 --create 없이 실행해 확인한다.
-Garage 버전의 CLI help를 확인해 bucket 생성/alias, backend key의 write 권한, gateway key의 read 권한을 설정한다.
-현재 구조에서는 read-only signing gateway가 공개 GetObject만 제공한다. --replace-policy는 API 미지원을 해결하지 않는다.
+Garage에서는 bucket policy API를 호출하지 않는다. 이미 준비된 bucket과 writer 권한은 그대로 유지한다.
+공개 조회는 별도 reader key로 서명하는 독립 gateway가 담당한다. Website access=false를 유지한다.
 
-```json
-{"Version":"2012-10-17","Statement":[{"Sid":"ReadUploadedImages","Effect":"Allow","Principal":"*","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::autolog-public/uploads/*"]}]}
-```
+## 공개 이미지 조회
 
-## Cloudflare img.myhomlab.win: 자동 생성하지 않음
-
-기존 AutoLog Tunnel과 autolog hostname은 그대로 둔다. Cloudflare에서 image용 hostname/DNS route를 추가한다.
-Garage 관리 API/RPC/UI는 공개하지 않는다. 원하는 /uploads/... URL에는 아래 GET 전용 gateway의 path rewrite가 필요하다.
-Garage의 원래 S3 path는 /autolog-public/uploads/...이므로 URL prefix를 단순 생략하면 404가 된다.
-
-GET-only gateway는 공개 /uploads/... 요청을 autolog-public의 같은 object key로 매핑하고,
-**gateway의 별도 read-only key로 SigV4 서명한 GetObject/HeadObject 요청을**
-http://garage.lifelog.svc.cluster.local:3900으로 전달해야 한다.
-일반 Nginx proxy_pass만으로는 서명이 추가되지 않아 Garage S3에서 403이 날 수 있다.
-검증된 S3 signing proxy/gateway를 사용하거나 기존 gateway의 S3 signing 기능을 설정한다.
-클라이언트 Authorization/Cookie/query로 서명 대상을 바꾸게 하지 말고 다음 조건을 gateway에서 강제한다:
-
-- GET/HEAD만 허용, 다른 메서드는 405.
-- /uploads/ prefix와 UUID image key 경로만 허용; bucket은 autolog-public로 고정.
-- 디렉터리 traversal, bucket listing, 임의 query/API operation을 거절.
-- Garage access/secret은 gateway 서버 전용 Secret에만 두고 브라우저/redirect URL에 노출하지 않음.
-- 브라우저에는 이미지 bytes와 올바른 Content-Type/nosniff만 반환. S3 credential/signature를 반환하지 않음.
-
-Tunnel Public Hostname: img.myhomlab.win → http://실제-image-gateway-Service:8080.
-Cloudflare dashboard public-hostname 설정으로 DNS CNAME route를 생성하거나 기존 Tunnel 운영 방식으로 등록한다.
-Gateway와 cloudflared pod가 default-deny에 걸리므로 실제 라벨/namespace 기준으로
-cloudflared → gateway:8080 및 gateway → garage:3900 egress/ingress 정책을 별도 추가한다.
-backend용 garage.yaml만으로 image gateway ingress가 허용되지는 않는다. 이 hostname/gateway/policy는 이번 코드에서 자동 배포하지 않는다.
-Cloudflare Access가 관리자용이면 image hostname에 로그인 강제를 걸지 않도록 정책 범위를 확인한다.
-
-Garage S3를 public hostname에 단순 연결하는 방법은 익명 bucket policy 미지원 환경에서 동작하지 않는다.
-3900 S3 signing gateway를 사용한다. 별도 website endpoint로 전체 bucket을 익명 공개하는 방식은 이번 구성에 추가하지 않는다.
-이 문서는 gateway 계약/설정 요구사항을 설명하며 실제 signing gateway/Cloudflare DNS를 자동 생성하지 않는다.
+[image-gateway 구현·Secret·Podman·Kubernetes·Cloudflare·롤백 절차](image-gateway.md)를 따른다.
+새 image hostname 규칙만 기존 Tunnel fallback 앞에 추가하며 autolog hostname과 tunnel credential은 유지한다.
 
 ## 테스트와 운영 확인
 

@@ -1,0 +1,10 @@
+# FRAGMENT ONLY, not a Kubernetes resource or complete cloudflared configuration.
+# Insert these rules into EXISTING ConfigMap data.config.yml ingress, BEFORE its fallback.
+# Preserve ALL existing entries including autolog.myhomlab.win, tunnel ID,
+# credentials-file, tokens/mounts, ConfigMap name and deployment arguments.
+- hostname: img.myhomlab.win
+  path: ^/uploads/.*
+  service: http://image-gateway.lifelog.svc.cluster.local:8080
+- hostname: img.myhomlab.win
+  service: http_status:404
+# Keep the existing global `- service: http_status:404` AFTER these rules.

@@ -73,3 +73,9 @@ PostgreSQL은 PVC 기본, StorageClass 미구성 시 local PV 예시, 테스트 
 관리자 편집기의 multipart POST /api/uploads는 같은 write 인증/CSRF를 사용한다. Pillow 검증 후 boto3가 Garage TCP 3900에 저장한다.
 이미지 메타데이터 테이블 없이 S3_PUBLIC_BASE_URL + UUID key를 Markdown에 삽입한다. DB 모델/migration과 기존 공개/CMS 권한은 유지한다.
 [Garage·Cloudflare·NetworkPolicy 적용과 롤백](image-uploads.md)을 참고한다.
+
+## 공개 이미지 읽기
+
+Reader → img.myhomlab.win → 독립 image-gateway → Garage GetObject/HeadObject(read-only key).
+기존 Admin → AutoLog Backend → Garage RW key 업로드와 Secret/프로세스/Deployment를 분리한다.
+Website=false, bucket policy 미사용. [배포·권한·통신 정책](image-gateway.md).

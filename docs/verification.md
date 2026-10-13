@@ -110,4 +110,22 @@ DB 모델·migration·기존 manifest image 필드는 변경하지 않았다. �
 
 Garage 전환: boto3/upload API/Article/auth/UI는 유지하고 endpoint와 Secret, NetworkPolicy 대상을 Garage:3900으로 변경했다.
 표준 GetObject-only PutBucketPolicy 코드는 재사용하되 Garage의 미지원 정책 API 응답을 성공으로 처리하지 않는 테스트 2개를 추가했다.
-실제 Garage 버전/서명 gateway/외부 hostname은 테스트하지 않았으며 공식 호환성 제한을 image-uploads 문서에 명시했다.
+Garage 전환 당시 실제 Garage/서명 gateway/외부 hostname 검증은 수행하지 않았다. 독립 gateway의 후속 검증은 아래와 같다.
+
+
+## 독립 image gateway 검증
+
+- gateway 30개 테스트 통과: GET/HEAD, 404/405, prefix/traversal/query 차단, read-only 전용 env,
+  SDK 오류/불완전 body/metadata 검사, 실제 boto3 SigV4 → localhost HTTP S3 stub의 bucket/key/reader 서명 확인.
+- 기존 backend 전체 113개 테스트 및 frontend upload proxy 8개 테스트 통과.
+- 기존 production Next.js + 실제 FastAPI(mock storage) 관리자 업로드 브라우저 검증 통과:
+  multipart boundary/length/digest, 커서 Markdown 삽입, Token/session/CSRF, 크기/형식/오류 처리 유지.
+- 신규 gateway production Dockerfile 빌드 및 non-root/read-only/cap-drop 컨테이너 실행 통과.
+  로컬 S3 HTTP stub에 reader SigV4 GET/HEAD, 이미지 bytes/ETag, 404/405, upstream 종료 후 안전한 502 확인.
+- Kustomize 5.7.1로 standalone manifests의 lifelog namespace 7개 자원 렌더링 확인.
+  restricted securityContext, 전용 reader Secret 참조, 기존 앱 자원 미포함 확인.
+
+backend/frontend/upload runtime 코드, DB migration, 기존 autolog Tunnel 설정은 변경하지 않았다.
+Bucket policy/website API를 새 gateway/배포 절차에서 사용하지 않는다.
+실제 Garage reader 권한/cluster admission/NetworkPolicy/Cloudflare DNS는 운영 배포 후
+[image-gateway 절차](image-gateway.md)로 확인해야 한다. 위 검증 단계에서는 운영 배포를 수행하지 않았다.
