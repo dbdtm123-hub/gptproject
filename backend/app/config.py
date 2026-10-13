@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     action_server_url: str = "https://autolog.example.com"
     enable_openai_classification: bool = False
     openai_api_key: SecretStr | None = None
+    s3_endpoint: str = "http://garage.lifelog.svc.cluster.local:3900"
+    s3_access_key: SecretStr | None = None
+    s3_secret_key: SecretStr | None = None
+    s3_bucket: str = "autolog-public"
+    s3_public_base_url: str | None = None
+    s3_region: str = "garage"
     openai_model: str = "gpt-4o-mini"
 
 

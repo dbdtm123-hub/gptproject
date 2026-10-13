@@ -1114,6 +1114,20 @@
         ],
         "title": "ArticleUpsert"
       },
+      "Body_uploadImage": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_uploadImage"
+      },
       "CategoryRead": {
         "properties": {
           "id": {
@@ -1510,6 +1524,24 @@
           "raw_text"
         ],
         "title": "ParseRequest"
+      },
+      "UploadResult": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "key"
+        ],
+        "title": "UploadResult"
       },
       "ValidationError": {
         "properties": {

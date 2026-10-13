@@ -18,7 +18,7 @@ flowchart LR
 [공개 블로그와 관리자 CMS 권한·배포 절차](docs/public-cms.md)를 참고한다.
 
 [ChatGPT Action 연동](docs/chatgpt-actions.md), [아키텍처](docs/architecture.md),
-[검증 기록](docs/verification.md), [NFS 블로그 요청 예제](docs/examples/nfs-article.json)를 참고한다.
+[이미지 업로드/Garage 설정](docs/image-uploads.md), [검증 기록](docs/verification.md), [NFS 블로그 요청 예제](docs/examples/nfs-article.json)를 참고한다.
 
 ## Article API와 기존 글 이어쓰기
 

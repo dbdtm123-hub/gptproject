@@ -10,3 +10,7 @@ data:
   OPENAI_MODEL: gpt-4o-mini
   ENABLE_OPENAI_CLASSIFICATION: "false"
   ACTION_SERVER_URL: https://autolog.example.com
+  S3_ENDPOINT: http://garage.lifelog.svc.cluster.local:3900
+  S3_BUCKET: autolog-public
+  S3_REGION: garage
+  S3_PUBLIC_BASE_URL: https://img.myhomlab.win

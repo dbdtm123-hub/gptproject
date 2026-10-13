@@ -9,6 +9,7 @@ from app.articles import router as article_router
 from app.auth import router as auth_router, session_key
 from app.config import get_settings
 from app.database import get_session
+from app.uploads import router as upload_router, UploadGuard
 
 app = FastAPI(title="AutoLog Technical Blog API", version="0.3.0")
 app.add_middleware(
@@ -21,6 +22,8 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(article_router)
 app.include_router(auth_router)
+app.include_router(upload_router)
+app.add_middleware(UploadGuard)
 
 
 @app.get("/openapi-action.json", include_in_schema=False)

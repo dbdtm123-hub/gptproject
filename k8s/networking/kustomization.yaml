@@ -4,3 +4,4 @@ namespace: lifelog
 resources:
   - policies.yaml
   - cilium.yaml
+  - garage.yaml

@@ -3,7 +3,7 @@
 ## 결과
 
 실제 PostgreSQL과 production frontend/backend 컨테이너에서 OpenAI 키 없이 검증했다.
-전체 backend 테스트 **85 passed**, 실패/skip 없음. Starlette/httpx deprecation warning 1개는 남아 있다.
+전체 backend 테스트 **113 passed**, 실패/skip 없음. Starlette/httpx deprecation warning 1개는 남아 있다.
 Frontend 타입 검사, 고정 lockfile 설치, production 이미지 빌드가 통과했다.
 운영 Podman/containerd 원칙은 유지하고 이 클라우드에서 Docker Compose는 개발 검증에만 사용했다.
 
@@ -97,3 +97,17 @@ python scripts/submit-article.py --url http://127.0.0.1:3000 \
 실제 Custom GPT의 자연어 분석·Action 호출은 외부 HTTPS 주소와 인증 등록 후 확인해야 한다.
 대상 OpenStack 클러스터의 kubeconfig/GHCR 인증 정보가 없어 실제 registry push와 Kubernetes rollout은 실행하지 않았다.
 기존 Kubernetes 구성과 배포 절차를 유지하며 새 migration Job 완료 후 API/UI를 업데이트해야 한다.
+
+## 이미지 업로드 검증
+
+backend 전체 113개 테스트(기존 CMS/Article 회귀 포함)가 통과했다. S3는 mock하여 실제 Garage 없이 검증한다.
+게스트/잘못된 Token 401, 관리자 세션/Token 201, Cookie CSRF 403, MIME·decode·위조·파일/전체 body 크기,
+UUIDv4 key·외부 공개 URL·storage 오류 안전 응답을 확인했다. Bucket 초기화의 명시적 create/read policy/기존 policy 교체 방지도 테스트했다.
+Frontend typecheck/build와 production proxy + real backend(mock storage) 브라우저 테스트가 통과했다.
+1 MiB 초과 유효 이미지 업로드, 커서 삽입, alt escaping, Markdown preview, 장애 시 본문 보존, SVG 거절, Token·CSRF를 확인했다.
+재현: python scripts/check-image-upload-ui.py (Playwright/Pillow/python-dotenv + Chromium 필요).
+DB 모델·migration·기존 manifest image 필드는 변경하지 않았다. 실제 Garage/Cloudflare 공개 설정과 운영 네트워크 허용은 대상 클러스터에서 확인해야 한다.
+
+Garage 전환: boto3/upload API/Article/auth/UI는 유지하고 endpoint와 Secret, NetworkPolicy 대상을 Garage:3900으로 변경했다.
+표준 GetObject-only PutBucketPolicy 코드는 재사용하되 Garage의 미지원 정책 API 응답을 성공으로 처리하지 않는 테스트 2개를 추가했다.
+실제 Garage 버전/서명 gateway/외부 hostname은 테스트하지 않았으며 공식 호환성 제한을 image-uploads 문서에 명시했다.

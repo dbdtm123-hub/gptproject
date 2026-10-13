@@ -38,3 +38,7 @@ a{color:var(--accent);text-underline-offset:4px}a:hover{text-decoration:underlin
 .admin-entry h2 { margin: 18px 0 10px; }
 .admin-entry p { line-height: 1.8; overflow-wrap: anywhere; }
 .admin > label { max-width: 240px; margin-bottom: 28px; }
+.image-upload { margin: 16px 0 22px; padding: 18px; border: 1px dashed var(--border); border-radius: 10px; }
+.image-upload small { display: block; line-height: 1.7; }
+.upload-choice { font-weight: 600; }
+.upload-choice input { font-weight: 400; }

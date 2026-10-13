@@ -67,3 +67,9 @@ PostgreSQL은 PVC 기본, StorageClass 미구성 시 local PV 예시, 테스트 
 - frontend/app/legacy/: 이전 Entry 화면.
 - docs/actions.openapi.json, chatgpt-actions.md, examples/nfs-article.json: Action 계약과 acceptance 예제.
 - scripts/submit-article.py: 비밀 값을 출력하지 않는 API 제출 예제.
+
+## 이미지 업로드
+
+관리자 편집기의 multipart POST /api/uploads는 같은 write 인증/CSRF를 사용한다. Pillow 검증 후 boto3가 Garage TCP 3900에 저장한다.
+이미지 메타데이터 테이블 없이 S3_PUBLIC_BASE_URL + UUID key를 Markdown에 삽입한다. DB 모델/migration과 기존 공개/CMS 권한은 유지한다.
+[Garage·Cloudflare·NetworkPolicy 적용과 롤백](image-uploads.md)을 참고한다.

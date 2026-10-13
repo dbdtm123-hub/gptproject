@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, Article, ArticlePage, Category } from "../lib/api";
 import Markdown from "./Markdown";
 
@@ -16,6 +16,39 @@ export default function ArticleEditor({ id }: { id?: string }) {
   const [version, setVersion] = useState(""); const [loaded, setLoaded] = useState(!id);
   const [categories, setCategories] = useState<Category[]>([]); const [choices, setChoices] = useState<ArticlePage["items"]>([]);
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const [preview, setPreview] = useState(false);
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const cursor = useRef({ start: 0, end: 0 });
+  const [uploading, setUploading] = useState(false); const [alt, setAlt] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  function rememberCursor() {
+    if (textarea.current) cursor.current = { start: textarea.current.selectionStart, end: textarea.current.selectionEnd };
+  }
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    setUploadError("");
+    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) { setUploadError("JPEG, PNG, WebP, GIF 이미지만 업로드할 수 있습니다."); return; }
+    if (file.size > 10 * 1024 * 1024) { setUploadError("이미지는 10 MiB 이하여야 합니다."); return; }
+    const position = { ...cursor.current };
+    const description = (alt.trim() || "이미지 설명").replace(/[\r\n]+/g, " ").replace(/[\\\[\]]/g, "\\$&");
+    const form = new FormData(); form.append("file", file);
+    setUploading(true);
+    try {
+      const result = await api<{ url: string; key: string }>("uploads", { method: "POST", body: form });
+      const url = new URL(result.url);
+      if (url.protocol !== "https:") throw new Error("이미지 URL을 확인해 주세요.");
+      const markdown = `\n![${description}](${url.href.replace(/\(/g, "%28").replace(/\)/g, "%29")})\n`;
+      let nextCursor = 0;
+      setDraft(previous => {
+        const start = Math.min(position.start, previous.content_markdown.length);
+        const end = Math.min(Math.max(position.end, start), previous.content_markdown.length);
+        nextCursor = start + markdown.length;
+        return { ...previous, content_markdown: previous.content_markdown.slice(0, start) + markdown + previous.content_markdown.slice(end) };
+      });
+      setPreview(false);
+      requestAnimationFrame(() => { textarea.current?.focus(); textarea.current?.setSelectionRange(nextCursor, nextCursor); cursor.current = { start: nextCursor, end: nextCursor }; });
+    } catch (e) { setUploadError((e as Error).message); }
+    finally { setUploading(false); }
+  }
   useEffect(() => {
     const controller = new AbortController();
     api<Category[]>("categories", { signal: controller.signal }).then(setCategories).catch(() => {});
@@ -57,9 +90,16 @@ export default function ArticleEditor({ id }: { id?: string }) {
           {choices.filter(article => article.id !== id).map(article => <option key={article.id} value={article.id}>{article.title}</option>)}</select></label>
         <small>최근 100개 글에서 선택할 수 있습니다. API에서는 글 ID로 관련 글을 지정할 수 있습니다.</small>
       </section>
-      <section><div className="section-header"><h2>Markdown 본문</h2><button type="button" className="secondary" onClick={() => setPreview(!preview)}>{preview ? "편집하기" : "미리보기"}</button></div>
-        {preview ? <Markdown content={draft.content_markdown} /> : <div><label htmlFor="article-content">본문</label><textarea id="article-content" className="markdown-input" required maxLength={200000} value={draft.content_markdown} onChange={e => change("content_markdown", e.target.value)} /></div>}
-      </section><button disabled={busy || !draft.title.trim() || !draft.summary.trim() || !draft.content_markdown.trim()} type="submit">{busy ? "저장 중…" : "글 저장"}</button>
+      <section><div className="section-header"><h2>Markdown 본문</h2><button type="button" className="secondary" disabled={uploading} onClick={() => { rememberCursor(); setPreview(!preview); }}>{preview ? "편집하기" : "미리보기"}</button></div>
+        <div className="image-upload">
+          <label>이미지 설명<input maxLength={200} value={alt} disabled={uploading} onChange={e => setAlt(e.target.value)} placeholder="예: OpenStack 구성도" /></label>
+          <label className="upload-choice">{uploading ? "이미지 업로드 중…" : "이미지 업로드"}<input aria-label="이미지 업로드" type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={uploading || busy} onChange={e => { void upload(e.target.files?.[0]); e.target.value = ""; }} /></label>
+          <small>최대 10 MiB · 업로드한 이미지는 URL을 아는 누구나 볼 수 있습니다.</small>
+          {uploadError && <p className="notice" role="alert">{uploadError}</p>}
+          {uploading && <p role="status">이미지를 저장하고 있습니다.</p>}
+        </div>
+        {preview ? <Markdown content={draft.content_markdown} /> : <div><label htmlFor="article-content">본문</label><textarea ref={textarea} onSelect={rememberCursor} onBlur={rememberCursor} disabled={uploading} id="article-content" className="markdown-input" required maxLength={200000} value={draft.content_markdown} onChange={e => change("content_markdown", e.target.value)} /></div>}
+      </section><button disabled={busy || uploading || !draft.title.trim() || !draft.summary.trim() || !draft.content_markdown.trim()} type="submit">{busy ? "저장 중…" : "글 저장"}</button>
       {id && <p className="source">편집 중 다른 클라이언트가 글을 수정하면 저장을 차단합니다. 충돌 시 입력을 보관하고 최신 글을 다시 확인하세요.</p>}
     </form>}
   </main>;

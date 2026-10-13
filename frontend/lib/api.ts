@@ -9,7 +9,7 @@ export type ArticlePage = { items: ArticleSummary[]; total: number; limit: numbe
 export type Category = { id: string; name: string };
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/${path}`, { ...options, headers: { "Content-Type": "application/json" }, cache: "no-store" });
+  const response = await fetch(`/api/${path}`, { ...options, headers: options?.body instanceof FormData ? {} : { "Content-Type": "application/json" }, cache: "no-store" });
   if (response.status === 204) return undefined as T;
   const data = await response.json();
   if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "입력 형식과 길이를 확인해 주세요.");

@@ -1,0 +1,68 @@
+"""Optional integration test: requires Python Playwright, Pillow, python-dotenv and Chromium.
+Uses real local API/proxy with mock storage; never writes Articles or Garage objects.
+Run after frontend npm run build and backend dependency/DB setup.
+"""
+import os,sys,secrets,subprocess,time,json,tempfile
+from io import BytesIO
+from pathlib import Path
+from dotenv import dotenv_values
+from PIL import Image
+from playwright.sync_api import sync_playwright,expect
+root=Path(__file__).resolve().parents[1];settings=dotenv_values(root/'.env');password=secrets.token_urlsafe(32);token=secrets.token_urlsafe(48)
+env=os.environ.copy();env.update(DATABASE_URL=settings['DATABASE_URL'],APP_USERNAME='upload-test',APP_PASSWORD=password,API_TOKEN=token,S3_PUBLIC_BASE_URL='https://img.myhomlab.win',BACKEND_URL='http://127.0.0.1:8101')
+code='''from app.main import app
+from app.storage import get_image_storage
+from fastapi import HTTPException
+class Fake:
+ def put(self,key,data,mime):
+  assert key.startswith('uploads/') and mime.startswith('image/')
+  if mime=='image/jpeg':raise HTTPException(502,'Image storage is unavailable; please retry')
+app.dependency_overrides[get_image_storage]=Fake
+import uvicorn
+uvicorn.run(app,host='127.0.0.1',port=8101,log_level='error')
+'''
+backend=subprocess.Popen([str(root/'backend/.venv/bin/python'),'-c',code],cwd=root/'backend',env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+frontend_env=env.copy()
+for key in ['API_TOKEN','APP_PASSWORD','APP_USERNAME','DATABASE_URL','S3_ACCESS_KEY','S3_SECRET_KEY']:frontend_env.pop(key,None)
+frontend=subprocess.Popen(['node','node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port','3101'],cwd=root/'frontend',env=frontend_env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+# Valid image larger than the old 1-MiB JSON proxy limit.
+png=BytesIO();Image.frombytes('RGB',(900,900),os.urandom(900*900*3)).save(png,format='PNG');png=png.getvalue();assert len(png)>1024*1024
+jpg=BytesIO();Image.new('RGB',(4,4),'blue').save(jpg,format='JPEG');jpg=jpg.getvalue()
+try:
+ with sync_playwright() as p:
+  browser=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);guest=browser.new_context();page=guest.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+  for _ in range(30):
+   try:page.goto('http://127.0.0.1:3101');break
+   except Exception:page.wait_for_timeout(250)
+  expect(page.get_by_label('이미지 업로드',exact=True)).to_have_count(0)
+  for headers in [{},{'Authorization':'Bearer invalid'}]:
+   response=guest.request.post('http://127.0.0.1:3101/api/uploads',multipart={'file':{'name':'a.png','mimeType':'image/png','buffer':png}},headers=headers)
+   assert response.status==401
+  admin=browser.new_context();page=admin.new_page();page.on('pageerror',lambda e:errors.append(str(e)))
+  page.route('https://img.myhomlab.win/**',lambda r:r.fulfill(status=200,content_type='image/png',body=png))
+  page.goto('http://127.0.0.1:3101/login');page.get_by_label('사용자 이름').fill('upload-test');page.get_by_label('비밀번호',exact=True).fill(password);page.get_by_role('button',name='로그인',exact=True).click();expect(page).to_have_url('http://127.0.0.1:3101/admin')
+  page.get_by_role('link',name='글 작성',exact=True).click();body=page.get_by_label('본문',exact=True);body.fill('Before\nAfter');body.evaluate('(e)=>{e.focus(); e.setSelectionRange(7,7);e.dispatchEvent(new Event("select",{bubbles:true}));}')
+  page.get_by_label('이미지 설명',exact=True).fill('OpenStack [구성도]')
+  with page.expect_response(lambda r:r.url.endswith('/api/uploads') and r.request.method=='POST') as response:
+   page.get_by_label('이미지 업로드',exact=True).set_input_files({'name':'../../x.png','mimeType':'image/png','buffer':png})
+  assert response.value.status==201
+  result=response.value.json()
+  expected='Before\n\n![OpenStack \\[구성도\\]]('+result['url']+')\nAfter'
+  expect(body).to_have_value(expected)
+  page.get_by_role('button',name='미리보기',exact=True).click();expect(page.get_by_role('img',name='OpenStack [구성도]',exact=True)).to_have_attribute('src',result['url'])
+  page.get_by_role('button',name='편집하기',exact=True).click()
+  with page.expect_response(lambda r:r.url.endswith('/api/uploads') and r.request.method=='POST') as response:
+   page.get_by_label('이미지 업로드',exact=True).set_input_files({'name':'x.jpg','mimeType':'image/jpeg','buffer':jpg})
+  assert response.value.status==502;expect(page.locator('p[role=alert]')).to_contain_text('Image storage is unavailable');expect(body).to_have_value(expected)
+  page.get_by_label('이미지 업로드',exact=True).set_input_files({'name':'x.svg','mimeType':'image/svg+xml','buffer':b'<svg/>'});expect(page.locator('p[role=alert]')).to_contain_text('JPEG, PNG')
+  csrf=admin.request.post('http://127.0.0.1:3101/api/uploads',multipart={'file':{'name':'x.png','mimeType':'image/png','buffer':png}},headers={'Origin':'https://evil.example'});assert csrf.status==403
+  bearer=guest.request.post('http://127.0.0.1:3101/api/uploads',multipart={'file':{'name':'x.png','mimeType':'image/png','buffer':png}},headers={'Authorization':'Bearer '+token});assert bearer.status==201
+  assert not errors,errors
+  page.screenshot(path='/tmp/autolog-image-upload-ui.png',full_page=True)
+  browser.close()
+ print('PASS: real frontend proxy/backend validation with mocked storage; admin upload >1MiB, cursor insertion, escaped alt, Markdown image preview, storage failure preserving text, SVG rejection, anonymous/token auth and CSRF. No DB writes or real Garage access.')
+finally:
+ for process in [frontend,backend]:
+  process.terminate()
+  try:process.wait(timeout=10)
+  except subprocess.TimeoutExpired:process.kill();process.wait()

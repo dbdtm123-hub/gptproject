@@ -1,0 +1,38 @@
+# Confirm garage Service's actual pod selector; adjust both app:garage selectors if needed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-garage-egress
+  namespace: lifelog
+spec:
+  podSelector:
+    matchLabels:
+      app: lifelog-backend
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: garage
+      ports:
+        - protocol: TCP
+          port: 3900
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-garage-ingress
+  namespace: lifelog
+spec:
+  podSelector:
+    matchLabels:
+      app: garage
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: lifelog-backend
+      ports:
+        - protocol: TCP
+          port: 3900

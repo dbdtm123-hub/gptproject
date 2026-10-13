@@ -46,6 +46,16 @@ spec:
             - configMapRef:
                 name: lifelog-config
           env:
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lifelog-garage-s3
+                  key: S3_ACCESS_KEY
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lifelog-garage-s3
+                  key: S3_SECRET_KEY
             - name: APP_USERNAME
               valueFrom:
                 secretKeyRef:

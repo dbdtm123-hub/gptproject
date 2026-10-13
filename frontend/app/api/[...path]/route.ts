@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
-const maxBytes = 1024 * 1024;
+const jsonMaxBytes = 1024 * 1024;
 
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   const route = path.join("/");
   const articleRoute = /^(articles|articles\/(upsert|[0-9a-f-]{36})|tags)$/.test(route);
+  const uploadRoute = route === "uploads";
+  const maxBytes = uploadRoute ? 10 * 1024 * 1024 + 64 * 1024 : jsonMaxBytes;
+  const contentType = request.headers.get("content-type") || "";
   const authRoute = /^(auth\/(login|logout|me))$/.test(route);
-  const allowed = authRoute || articleRoute || /^(ingest|ingest\/(batch|categories)|capabilities|categories|entries|entries\/(parse|batch|[0-9a-f-]{36}))$/.test(route);
+  const allowed = uploadRoute || authRoute || articleRoute || /^(ingest|ingest\/(batch|categories)|capabilities|categories|entries|entries\/(parse|batch|[0-9a-f-]{36}))$/.test(route);
   if (!allowed) return NextResponse.json({ detail: "Not found" }, { status: 404 });
   const authorization = request.headers.get("authorization");
   if (request.method !== "GET") {
-    if (!request.headers.get("content-type")?.startsWith("application/json")) {
-      return NextResponse.json({ detail: "JSON is required" }, { status: 415 });
+    if (uploadRoute ? !/^multipart\/form-data;.*boundary=/i.test(contentType) : !contentType.startsWith("application/json")) {
+      return NextResponse.json({ detail: uploadRoute ? "Multipart form-data is required" : "JSON is required" }, { status: 415 });
     }
     // Cookie login/write/logout requests must originate from this site. Bearer clients do not use cookies.
     const origin = request.headers.get("origin");
@@ -35,6 +38,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   const backend = process.env.BACKEND_URL;
   if (!backend) return NextResponse.json({ detail: "Backend is not configured" }, { status: 503 });
   const session = request.cookies.get("autolog_admin")?.value;
+  if (uploadRoute && !authorization && !session) return NextResponse.json({ detail: "Authentication required" }, { status: 401 });
   let body: Uint8Array | undefined;
   if (request.body && request.method !== "GET") {
     const reader = request.body.getReader();
@@ -57,7 +61,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   try {
     const response = await fetch(`${backend.replace(/\/$/, "")}/api/${route}${request.nextUrl.search}`, {
       method: request.method,
-      headers: { "Content-Type": "application/json", Accept: "application/json",
+      headers: { "Content-Type": uploadRoute ? contentType : "application/json", Accept: "application/json",
         ...(authorization ? { Authorization: authorization } : {}),
         ...(session ? { Cookie: `autolog_admin=${session}` } : {}) },
       body: body as BodyInit | undefined,
