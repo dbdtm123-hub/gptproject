@@ -2,7 +2,7 @@
 Uses real local API/proxy with mock storage; never writes Articles or Garage objects.
 Run after frontend npm run build and backend dependency/DB setup.
 """
-import os,sys,secrets,subprocess,time,json,tempfile
+import os,sys,secrets,subprocess,time,json,tempfile,hashlib
 from io import BytesIO
 from pathlib import Path
 from dotenv import dotenv_values
@@ -10,12 +10,26 @@ from PIL import Image
 from playwright.sync_api import sync_playwright,expect
 root=Path(__file__).resolve().parents[1];settings=dotenv_values(root/'.env');password=secrets.token_urlsafe(32);token=secrets.token_urlsafe(48)
 env=os.environ.copy();env.update(DATABASE_URL=settings['DATABASE_URL'],APP_USERNAME='upload-test',APP_PASSWORD=password,API_TOKEN=token,S3_PUBLIC_BASE_URL='https://img.myhomlab.win',BACKEND_URL='http://127.0.0.1:8101')
-code='''from app.main import app
+code='''import hashlib,os
+from app.auth import is_admin
+from app.main import app
 from app.storage import get_image_storage
 from fastapi import HTTPException
+seen=[];stored=[]
+@app.middleware('http')
+async def observe(request,call_next):
+ if request.url.path=='/api/uploads' and request.method=='POST':
+  raw=await request.body()
+  seen.append({'path':request.url.path,'bytes':len(raw),'length':request.headers.get('content-length'),
+   'type':request.headers.get('content-type'),'admin':is_admin(request),
+   'bearer':request.headers.get('authorization')=='Bearer '+os.environ['API_TOKEN']})
+ return await call_next(request)
+@app.get('/test-upload-observations')
+def observations():return {'seen':seen,'stored':stored}
 class Fake:
  def put(self,key,data,mime):
   assert key.startswith('uploads/') and mime.startswith('image/')
+  stored.append({'key':key,'sha256':hashlib.sha256(data).hexdigest()})
   if mime=='image/jpeg':raise HTTPException(502,'Image storage is unavailable; please retry')
 app.dependency_overrides[get_image_storage]=Fake
 import uvicorn
@@ -47,6 +61,12 @@ try:
    page.get_by_label('이미지 업로드',exact=True).set_input_files({'name':'../../x.png','mimeType':'image/png','buffer':png})
   assert response.value.status==201
   result=response.value.json()
+  observation=guest.request.get('http://127.0.0.1:8101/test-upload-observations').json()
+  reached=observation['seen'][-1]
+  assert reached['path']=='/api/uploads' and reached['admin']
+  assert reached['type']==response.value.request.headers['content-type']
+  assert int(reached['length'])==reached['bytes']
+  assert observation['stored'][-1]['sha256']==hashlib.sha256(png).hexdigest()
   expected='Before\n\n![OpenStack \\[구성도\\]]('+result['url']+')\nAfter'
   expect(body).to_have_value(expected)
   page.get_by_role('button',name='미리보기',exact=True).click();expect(page.get_by_role('img',name='OpenStack [구성도]',exact=True)).to_have_attribute('src',result['url'])
@@ -57,10 +77,18 @@ try:
   page.get_by_label('이미지 업로드',exact=True).set_input_files({'name':'x.svg','mimeType':'image/svg+xml','buffer':b'<svg/>'});expect(page.locator('p[role=alert]')).to_contain_text('JPEG, PNG')
   csrf=admin.request.post('http://127.0.0.1:3101/api/uploads',multipart={'file':{'name':'x.png','mimeType':'image/png','buffer':png}},headers={'Origin':'https://evil.example'});assert csrf.status==403
   bearer=guest.request.post('http://127.0.0.1:3101/api/uploads',multipart={'file':{'name':'x.png','mimeType':'image/png','buffer':png}},headers={'Authorization':'Bearer '+token});assert bearer.status==201
+  observation=guest.request.get('http://127.0.0.1:8101/test-upload-observations').json()
+  assert observation['seen'][-1]['bearer'] and not observation['seen'][-1]['admin']
+  assert observation['stored'][-1]['sha256']==hashlib.sha256(png).hexdigest()
+  before=len(observation['seen'])
+  oversized=guest.request.post('http://127.0.0.1:3101/api/uploads',multipart={'file':{'name':'huge.png','mimeType':'image/png','buffer':b'x'*(11*1024*1024)}},headers={'Authorization':'Bearer '+token})
+  assert oversized.status==413 and oversized.headers['content-type'].startswith('application/json')
+  assert len(guest.request.get('http://127.0.0.1:8101/test-upload-observations').json()['seen'])==before
+  assert guest.request.get('http://127.0.0.1:3101/api/categories').status==200
   assert not errors,errors
   page.screenshot(path='/tmp/autolog-image-upload-ui.png',full_page=True)
   browser.close()
- print('PASS: real frontend proxy/backend validation with mocked storage; admin upload >1MiB, cursor insertion, escaped alt, Markdown image preview, storage failure preserving text, SVG rejection, anonymous/token auth and CSRF. No DB writes or real Garage access.')
+ print('PASS: real frontend proxy/backend validation with mocked storage; backend POST reachability/boundary/Content-Length/file digest, admin upload >1MiB, cursor insertion, escaped alt, Markdown image preview, storage failure preserving text, SVG rejection, anonymous/token auth and CSRF. No DB writes or real Garage access.')
 finally:
  for process in [frontend,backend]:
   process.terminate()
