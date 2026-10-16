@@ -20,7 +20,7 @@ if [[ "$mode" != "--plan" && "$mode" != "--apply" ]]; then usage; exit 2; fi
 command -v kubectl >/dev/null || { echo "kubectl is required" >&2; exit 1; }
 
 namespace="lifelog"
-registry="ghcr.io/dbdtm123-hub/autolog"
+registry="ghcr.io/dbdtm123-hub/gptproject-autolog-ci"
 components=(backend image-gateway frontend)
 workloads=(lifelog-backend image-gateway lifelog-frontend)
 images=(
@@ -30,9 +30,12 @@ images=(
 )
 
 echo "Cluster context: $(kubectl config current-context)"
-kubectl get namespace "$namespace" >/dev/null
 for i in 0 1 2; do
-  kubectl -n "$namespace" get deployment "${workloads[$i]}" >/dev/null
+  current_containers="$(kubectl --request-timeout=15s -n "$namespace" get deployment "${workloads[$i]}" -o jsonpath='{.spec.template.spec.containers[*].name}')"
+  if [[ " $current_containers " != *" ${components[$i]} "* ]]; then
+    echo "Refusing: deployment/${workloads[$i]} does not have container/${components[$i]} (found: $current_containers)" >&2
+    exit 1
+  fi
   echo "Plan: deployment/${workloads[$i]} container/${components[$i]} -> ${images[$i]}"
 done
 echo "No database migration, Secret, ConfigMap, PVC, Service or NetworkPolicy changes are included."

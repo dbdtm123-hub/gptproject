@@ -1,0 +1,43 @@
+# MANUAL SETUP ONLY: apply only after operator review.
+# Do not add this file to any Kustomization or CI apply stage.
+# Namespace lifelog must already exist.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: autolog-ci-deployer
+  namespace: lifelog
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: autolog-ci-deployer
+  namespace: lifelog
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["lifelog-backend", "lifelog-frontend", "image-gateway"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: autolog-ci-deployer
+  namespace: lifelog
+subjects:
+  - kind: ServiceAccount
+    name: autolog-ci-deployer
+    namespace: lifelog
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: autolog-ci-deployer
