@@ -144,7 +144,7 @@ jobs:
           file: ./${{ matrix.component }}/Dockerfile
           push: true
           platforms: linux/amd64
-          tags: ghcr.io/dbdtm123-hub/autolog/${{ matrix.component }}:sha-${{ github.sha }}
+          tags: ghcr.io/dbdtm123-hub/gptproject-autolog-ci/${{ matrix.component }}:sha-${{ github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
