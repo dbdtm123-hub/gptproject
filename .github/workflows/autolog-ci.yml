@@ -82,6 +82,8 @@ jobs:
       - uses: azure/setup-kubectl@v4
         with:
           version: v1.32.5
+      - name: Check deployment script syntax (no cluster access)
+        run: bash -n scripts/deploy-autolog.sh
       - name: Validate checked-in Kustomize bases
         run: |
           set -euo pipefail
