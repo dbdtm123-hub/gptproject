@@ -1,0 +1,24 @@
+# Optional Cilium Ingress. Enable the controller and create TLS Secret first.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lifelog
+  annotations:
+    ingress.cilium.io/loadbalancer-mode: dedicated
+    ingress.cilium.io/force-https: enabled
+spec:
+  ingressClassName: cilium
+  tls:
+    - hosts: [lifelog.example.com]
+      secretName: lifelog-tls
+  rules:
+    - host: lifelog.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: lifelog-frontend
+                port:
+                  name: http

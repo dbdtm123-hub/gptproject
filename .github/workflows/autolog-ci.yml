@@ -1,0 +1,150 @@
+name: AutoLog CI and GHCR images
+
+on:
+  pull_request:
+    branches: [work]
+  push:
+    branches: [work]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autolog-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests (isolated PostgreSQL, Python 3.12)
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: autolog_ci_test
+          POSTGRES_USER: autolog_ci
+          POSTGRES_PASSWORD: ci-only-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autolog_ci -d autolog_ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      # Ephemeral CI container only. Never point tests at a home-lab/production DB.
+      TEST_DATABASE_URL: postgresql+psycopg://autolog_ci:ci-only-test-password@127.0.0.1:5432/autolog_ci_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install locked test dependencies
+        run: python -m pip install --require-hashes -r backend/requirements-dev.txt
+      - name: Run backend tests
+        working-directory: backend
+        run: python -m pytest -q
+
+  image-gateway:
+    name: Image gateway unit tests (Python 3.12)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: image-gateway/requirements-dev.txt
+      - name: Install locked test dependencies
+        run: python -m pip install --require-hashes -r image-gateway/requirements-dev.txt
+      - name: Run gateway tests
+        working-directory: image-gateway
+        run: python -m pytest -q
+
+  frontend:
+    name: Next.js typecheck, proxy tests and build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Upload proxy regression tests
+        run: node --test tests/upload-proxy.test.cjs
+      - name: Production build
+        run: npm run build
+
+  manifests:
+    name: Render Kubernetes manifests (offline)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.32.5
+      - name: Check deployment script syntax (no cluster access)
+        run: bash -n scripts/deploy-autolog.sh
+      - name: Validate checked-in Kustomize bases
+        run: |
+          set -euo pipefail
+          for path in k8s/platform k8s/database k8s/migration k8s/backend k8s/frontend k8s/networking k8s/ingress k8s/image-gateway; do
+            kubectl kustomize "$path" > /dev/null
+          done
+      - name: Render application release without cluster access
+        run: |
+          python scripts/render-k8s.py \
+            --registry ghcr.io/dbdtm123-hub \
+            --hostname autolog.example.org \
+            --output "$RUNNER_TEMP/autolog-render"
+          test -f "$RUNNER_TEMP/autolog-render/04-backend.yaml"
+          test -f "$RUNNER_TEMP/autolog-render/05-frontend.yaml"
+
+  publish:
+    name: Publish ${{ matrix.component }} SHA image
+    # Images are published only after all checks pass on the trusted work branch.
+    needs: [backend, image-gateway, frontend, manifests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/work'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [backend, frontend, image-gateway]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push verified image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.component }}
+          file: ./${{ matrix.component }}/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: ghcr.io/dbdtm123-hub/gptproject-autolog-ci/${{ matrix.component }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}

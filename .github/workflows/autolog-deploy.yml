@@ -1,0 +1,117 @@
+name: AutoLog production deploy (manual, Tailscale)
+
+# Do not expose Kubernetes credentials to PR CI or to a persistent runner.
+# GitHub exposes workflow_dispatch on the default branch only.
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: "Full 40-char work commit with successful CI + GHCR publish"
+        required: true
+        type: string
+      confirmation:
+        description: "Type DEPLOY-LIFELOG after reviewing migration/backup"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autolog-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release request
+    runs-on: ubuntu-24.04
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Require full SHA and human confirmation
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$CONFIRMATION" == "DEPLOY-LIFELOG" ]] || exit 1
+
+  deploy:
+    name: Approved Tailscale Kubernetes rollout
+    needs: [validate]
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      AUTOLOG_CONFIRM_DEPLOY: DEPLOY-LIFELOG
+    steps:
+      - name: Fail closed until protected production credentials are configured
+        env:
+          TS_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_CLIENT_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+          KUBE_CONFIG_B64: ${{ secrets.AUTOLOG_KUBECONFIG_B64 }}
+        run: |
+          set -euo pipefail
+          test -n "$TS_CLIENT_ID"
+          test -n "$TS_CLIENT_SECRET"
+          test -n "$KUBE_CONFIG_B64"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check trusted work ancestry and successful publish workflow
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin work
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/work
+          succeeded="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${RELEASE_SHA}&branch=work&event=push&per_page=100" --jq '[.workflow_runs[] | select(.name == "AutoLog CI and GHCR images" and .conclusion == "success")] | length')"
+          test "$succeeded" -ge 1
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Require all three published images before touching cluster
+        run: |
+          set -euo pipefail
+          for component in backend image-gateway frontend; do
+            docker manifest inspect "ghcr.io/dbdtm123-hub/gptproject-autolog-ci/$component:sha-$RELEASE_SHA" >/dev/null
+          done
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.32.5
+
+      - name: Connect short-lived GitHub runner to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:autolog-cd
+
+      - name: Load restricted kubeconfig without printing it
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.AUTOLOG_KUBECONFIG_B64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          config_path="$RUNNER_TEMP/autolog-deployer.kubeconfig"
+          printf '%s' "$KUBE_CONFIG_B64" | base64 --decode > "$config_path"
+          chmod 600 "$config_path"
+          echo "KUBECONFIG=$config_path" >> "$GITHUB_ENV"
+
+      - name: Preview rollout and verify access
+        run: bash scripts/deploy-autolog.sh "$RELEASE_SHA"
+
+      - name: Roll out only the three application Deployments
+        run: bash scripts/deploy-autolog.sh "$RELEASE_SHA" --apply
