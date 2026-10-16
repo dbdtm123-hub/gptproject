@@ -1,124 +1,135 @@
-# AutoLog CI/CD 운영 가이드 (승인형 배포)
+# AutoLog CI/CD: 검증된 이미지 + Tailscale 승인형 Kubernetes 배포
 
-**목적:** `work` 브랜치의 AutoLog 변경을 GitHub Actions가 테스트하고 GHCR에 SHA 태그 이미지를 발행하며, 운영 Kubernetes에는 **명시적인 승인 후** 애플리케이션 이미지만 갱신한다.
+> **현재 범위:** `work` 브랜치용 GitHub Actions CI, SHA-tagged GHCR 이미지, 승인형 CD 워크플로 **코드**와 Kubernetes 최소 RBAC 템플릿. 운영 클러스터에는 이 문서만으로 어떤 변경도 자동 적용하지 않는다. 외부 GitHub 환경 설정/크레덴셜/Tailscale 경로는 별도 설정이 필요하다.
 
-이 문서의 워크플로는 **설치 코드/절차**다. GitHub 설정, GHCR 권한, 배포 러너, 운영 kubeconfig/백업이 준비되지 않으면 실제 배포는 진행되지 않는다. 2026-10 시점의 Codex 전용 개발 VM에는 운영 클러스터 자격증명을 추가하지 않는다.
+## 왜 이런 구조인가?
 
-## 운영 구조
+이 저장소는 **public**이다. 공개 저장소가 PR 코드를 실행할 수 있는 **상시 self-hosted runner**에 운영 Kubernetes 자격증명을 제공하면 위험하다. 따라서 **GitHub-hosted 일회용 러너**에 Tailscale 연결을 잠깐 생성하는 방식으로 변경했다. Github-hosted 러너에 올라가는 유일한 클러스터 인증은 **production Environment 승인 후에만** 제공되는 최소 권한 kubeconfig이다.
 
 ```text
-Codex CLI (개발 VM, 로컬 변경)
-  -> 리뷰할 커밋을 GitHub 원격 개발 브랜치에 별도 Push (승인 후)
-  -> PR -> work
-      -> CI: Backend pytest / Gateway pytest / Frontend tsc + proxy tests + Next build
-      -> CI: Kustomize + render 검증 (클러스터 접속 없음)
-  -> PR 승인 후 work로 merge
-      -> CI 재검증
-      -> GHCR: backend, frontend, image-gateway
-         태그 sha-<40자리 commit SHA>
-  -> 별도 수동 CD 요청 + GitHub Environment: production 승인
-      -> 전용 self-hosted runner + 최소 권한 kubeconfig
-      -> 배포 미리보기
-      -> lifelog 3개 Deployment 이미지 교체 + rollout status
-      -> 실패 시 변경한 Deployment rollout undo 시도
+개발 VM(Codex) ── 별도 개발 브랜치 ── PR → work
+                                        │
+                          CI: pytest · tsc · Next build
+                                        │
+                        GHCR: SHA-tagged 이미지 3개
+                                        │
+                         [수동 release SHA 지정]
+                                        │
+                   [GitHub production 승인/보호]
+                                        │
+                  GitHub-hosted 임시 Ubuntu 러너
+                                        │
+                      Tailscale: tag:autolog-cd
+                                        │
+                Kubernetes API (Tailscale ACL 제한)
+                                        │
+                lifelog의 앱 Deployment만 패치
 ```
 
-**하지 않는 작업:** GitHub Actions가 DB, PVC, Secret, ConfigMap, Garage, NetworkPolicy, Cilium, Namespace 또는 Alembic migration을 자동 apply하지 않는다.
+운영 PostgreSQL, Garage, PVC, Namespace, Secrets, migration, Cilium 설정은 변경하지 않는다.
 
-## 포함된 파일
+## CI: 자동 동작
 
-| 파일 | 역할 |
+- `work` 대상 PR → Backend(Python 3.12, 테스트용 PostgreSQL), image-gateway(Python 3.12), Frontend(Node 22/Next.js), 오프라인 Kustomize 검사. **PR에서 이미지 업로드 안 함**.
+- `work` push → 위 검증이 모두 통과하면 GHCR에 세 이미지를 발행.
+- `workflow_dispatch` CI 수동 검사 → 이미지 업로드하지 않음.
+- 이미지 경로(이전에 수동 업로드한 권한 미연결 `autolog/backend`·`autolog/frontend`와 충돌하지 않게 변경):
+
+```text
+ghcr.io/dbdtm123-hub/gptproject-autolog-ci/backend:sha-<40자리_SHA>
+ghcr.io/dbdtm123-hub/gptproject-autolog-ci/frontend:sha-<40자리_SHA>
+ghcr.io/dbdtm123-hub/gptproject-autolog-ci/image-gateway:sha-<40자리_SHA>
+```
+
+**주의:** 이미지 태그는 digest가 아니며 불변성은 레지스트리 정책에 따라 다르다. 운영에는 성공한 동일 work SHA의 이미지 세 개만 사용한다. 첫 발행 후 패키지가 기본 비공개일 수 있으므로 **클러스터에서 이미지 Pull 가능한지** 반드시 확인한다. Private GHCR 패키지는 노드용 최소 읽기 권한 imagePullSecret이 필요할 수 있다.
+
+## CD 선행 설정: 코드는 준비됐지만 운영 접근은 아직 불가
+
+### 1. GitHub production Environment
+
+GitHub 저장소 Settings → Environments → `production` 환경을 **미리 생성하고 필수 승인자(required reviewers)**를 설정한다. 사용 중인 계정/플랜에서 보호 규칙이 지원되는지 UI에서 확인한다. Repository의 Actions 권한과 브랜치 보호도 설정하고, 최소한 `work`의 임의 force-push와 검증되지 않은 직접 Push를 금지한다.
+
+**환경 보호/승인 규칙을 설정하지 않은 상태에서 배포용 비밀값부터 넣으면 안 된다.**
+
+다음 세 값을 **Repository-wide Secrets가 아니라 production Environment Secrets**로 등록한다. 채팅, 코드, Actions 로그에 값을 표시하지 않는다.
+
+| Environment Secret | 뜻 |
 | --- | --- |
-| `.github/workflows/autolog-ci.yml` | PR/Push 테스트; 성공한 `work` 커밋 이미지만 GHCR에 빌드·업로드 |
-| `.github/workflows/autolog-deploy.yml` | 수동 트리거 전용 운영 배포 (자동 Push 배포 없음) |
-| `scripts/deploy-autolog.sh` | 계획 확인(기본) / 승인된 배포 및 오류 시 Deployment 롤백 |
-| `docs/ci-cd.md` | 최초 셋업, 한계, 릴리스/복구 절차 |
+| `TS_OAUTH_CLIENT_ID` | Tailscale OAuth 클라이언트 ID |
+| `TS_OAUTH_SECRET` | Tailscale OAuth Secret (`auth_keys` scope + `tag:autolog-cd` 허용) |
+| `AUTOLOG_KUBECONFIG_B64` | 아래 `autolog-ci-deployer` 최소 권한 kubeconfig를 base64 인코딩한 값 |
 
-## 1. CI 사용법
+Tailscale의 Admin → Trust credentials/OAuth clients에서 위 계정과 `tag:autolog-cd`를 설정하고 Tailnet ACL/grants는 **해당 태그에서 Kubernetes API(대개 TCP 6443)로만** 접근하도록 제한한다. 모든 홈랩 노드와 SSH/DB/관리 UI에 광범위한 접근을 주지 않는다.
 
-GitHub Repository → **Actions**에서 워크플로 활성화를 확인한다. 자동 실행은 다음 조건이다.
+### 2. Kubernetes 최소 RBAC (사람이 클러스터에서 수동 적용)
 
-- `work`을 대상으로 하는 PR: **테스트만 실행**, 이미지 Push는 하지 않는다.
-- `work`에 Push: 모든 테스트 통과 후 **GHCR 이미지 3개**를 빌드하고 발행한다.
-- `workflow_dispatch`: 수동 CI 검사만 실행, GHCR Publish는 수행하지 않는다.
-
-현재 소스는 `frontend/package-lock.json`과 Python 해시 잠금 `requirements-dev.txt`를 사용한다. 검증 작업은 모두 GitHub가 제공하는 러너에서 돌아가며 운영 클러스터나 DB에 접근하지 않는다.
-
-이미지 태그 예시(실제 사용 시 **성공한 work commit SHA**로 변경):
-
-```text
-ghcr.io/dbdtm123-hub/autolog/backend:sha-<40_HEX_SHA>
-ghcr.io/dbdtm123-hub/autolog/frontend:sha-<40_HEX_SHA>
-ghcr.io/dbdtm123-hub/autolog/image-gateway:sha-<40_HEX_SHA>
-```
-
-`sha-` 태그는 재현에 도움이 되지만 태그 자체가 레지스트리에서 기술적으로 변경 불가능한 것은 아니다. 완전한 이미지 고정이 필요하면 빌드 결과의 `@sha256` digest까지 검증하고 배포하는 방식으로 확장한다.
-
-GitHub Settings → Actions에서 GITHUB_TOKEN의 **Packages 쓰기 권한/조직 패키지 정책**을 확인한다. CI의 `publish` Job에만 `packages: write` 권한이 있다. 별도 PAT를 워크플로에 넣지 않는다.
-
-**현재 Codex 로컬 커밋은 원격 `work`에 자동 반영되지 않는다.** PR로 검토·Push·Merge해야 해당 버전의 CI 이미지가 생긴다.
-
-## 2. 최초 CD 셋업 — 자동 실행되지는 않음
-
-**주의: `main`이 기본 브랜치이고 현재는 README 중심이다.** GitHub의 수동 `workflow_dispatch` 버튼은 워크플로가 *기본 브랜치에도 존재*해야 정상 활성화된다. 이 PR을 `work`에만 합치는 것으로는 수동 배포 버튼이 안 보일 수 있다. 실제 CD 운영 전에는 보호된 변경 절차로 같은 배포 워크플로를 기본 브랜치에도 반영해야 한다. 운영 인프라에는 자동 적용하지 않는다.
-
-필요한 준비 작업:
-
-1. GitHub Settings → Environments에서 `production` 환경을 만들고 **Required reviewers**와 가능한 배포 브랜치/태그 제한을 설정한다. Repository 플랜에 따라 승인 기능이 달라질 수 있다.
-2. 배포 전용 GitHub Actions **self-hosted runner** 1대를 구성하고 라벨 `autolog-deployer`를 지정한다. 개인 개발 VM의 Codex 환경에 운영 kubeconfig를 주지 말고 별도 신뢰 가능한 관리 호스트 또는 격리된 러너를 사용한다.
-3. 해당 러너에 `kubectl` 및 관리용 `KUBECONFIG` 환경 변수를 설정한다. Kubernetes RBAC는 `lifelog` 네임스페이스의 필요한 Deployment 조회·patch/rollout에 필요한 권한만 부여한다. 운영 DB·Secret 열람이나 cluster-admin 권한은 주지 않는다. kubeconfig 파일 및 인증서를 Git/Actions 로그에 출력하지 않는다.
-4. Kubernetes 워커에서 GHCR의 이미지 3개를 pull할 수 있는지 확인한다. 비공개 패키지라면 **기존 Kubernetes imagePullSecret**을 적절한 Deployment ServiceAccount/Pod에 연결해야 한다. 이 PR은 Secret을 생성하거나 수정하지 않는다.
-5. 실제 배포 전에 DB 백업과 복구 절차를 확인하고, 해당 커밋에서 **Alembic migration이 필요한지** 사람이 확인한다. 필요하면 별도 승인된 마이그레이션 작업을 먼저 수행해야 한다. 이 자동 CD는 migration을 실행하지 않는다.
-
-**확인:** 관리자용 kubeconfig를 Actions 저장소 Secret으로 직접 복사하거나 공개 GitHub 호스티드 러너에 전달하지 않는다. Self-hosted runner는 노출/유출 가능성이 있으므로 악의적 PR 코드를 실행하지 않는 배포 전용으로 관리한다.
-
-## 3. 직접 배포 계획 확인 (읽기 전용)
-
-`KUBECONFIG`가 설정된 **배포 관리 호스트**에서:
+`k8s/examples/autolog-ci-deployer-rbac.yaml.example` 파일은 **자동 배포/검증용 Kustomization에 포함하지 않았다.** 관리자 kubeconfig를 가진 별도 관리 호스트에서 먼저 내용을 검토한다.
 
 ```bash
-export KUBECONFIG=/path/to/least-privilege-kubeconfig
-# 성공한 work CI의 commit SHA
-RELEASE_SHA="<40_HEX_SHA>"
-bash scripts/deploy-autolog.sh "$RELEASE_SHA"
+kubectl --context <ADMIN_CONTEXT> -n lifelog get deployments
+kubectl --context <ADMIN_CONTEXT> apply -f k8s/examples/autolog-ci-deployer-rbac.yaml.example
 ```
 
-`--apply`가 없으면 네임스페이스와 Deployment 존재만 검사하고 바꿀 이미지 목록을 출력한다. 어떤 클러스터 리소스도 수정하지 않는다.
+이 예시는 `lifelog` 네임스페이스에서 세 Deployment에만 update/patch, Deployment/ReplicaSet/Pod에 읽기 권한을 부여한다. Secret 읽기, DB 접근, cluster-admin 권한은 제공하지 않는다.
 
-## 4. 승인 후 배포
-
-수동 `workflow_dispatch` 화면에서 **검증된 work 커밋의 SHA**와 확인 문자열 `DEPLOY-LIFELOG`를 입력한다. 이어서 `production` Environment의 승인자가 확인한다.
-
-러너에서 실행되는 순서:
-
-1. 선택한 커밋이 실제 `work` 기록에 포함됐는지 검증한다.
-2. 앱 Deployment 세 개의 변경 계획을 확인한다.
-3. Backend, image-gateway, Frontend 이미지 태그만 순서대로 갱신한다.
-4. 각 Deployment에 대해 `rollout status --timeout=300s`를 기다린다.
-5. 중간 단계에서 실패하면 변경한 Deployment를 역순으로 `rollout undo` 시도한다.
-
-명령을 수동 실행해야 하는 예외적인 경우에만 다음과 같이 별도 확인 변수를 사용한다.
+RBAC 검증:
 
 ```bash
-export AUTOLOG_CONFIRM_DEPLOY=DEPLOY-LIFELOG
-bash scripts/deploy-autolog.sh "$RELEASE_SHA" --apply
+kubectl -n lifelog auth can-i patch deployment/lifelog-backend --as=system:serviceaccount:lifelog:autolog-ci-deployer
+kubectl -n lifelog auth can-i patch deployment/lifelog-frontend --as=system:serviceaccount:lifelog:autolog-ci-deployer
+kubectl -n lifelog auth can-i get secrets --as=system:serviceaccount:lifelog:autolog-ci-deployer
+# 첫 두 개는 yes, 마지막은 no가 기대값
 ```
 
-`kubectl rollout undo`는 **애플리케이션 Deployment의 이전 ReplicaSet 설정만 되돌린다.** 데이터베이스, 애플리케이션이 쓴 새 데이터, Storage 변경을 복원하지 않는다. 따라서 DB 마이그레이션과 보존 데이터 변경은 이 흐름에서 제외한다.
+### 3. 제한된 kubeconfig 준비
 
-배포가 성공해도 **브라우저/외부 HTTPS GET·이미지 업로드·글 작성** 같은 실제 사용 흐름은 별도로 확인해야 한다.
+`autolog-ci-deployer` ServiceAccount에 대한 토큰과 클러스터 서버 주소, TLS 인증서 정보를 조합하여 **별도의 제한된 kubeconfig**를 만든다. admin 사용자 자격증명을 GitHub로 옮기지 않는다.
 
-## 5. 릴리스 전 체크
+현대 Kubernetes에서 `kubectl -n lifelog create token autolog-ci-deployer --duration=24h` 등으로 발급하는 토큰은 **만료된다**. 짧은 수명의 토큰은 배포 시마다 교체하거나, 추후 별도 workload identity/token broker를 도입해야 한다. 장기 비밀 토큰을 무기한 방치하지 않는다.
 
-- PR의 CI Job 4개와 이미지 Publish가 성공했는가?
-- 대상 커밋이 `work`의 검증된 커밋인가?
-- GHCR 이미지 3개가 해당 SHA 태그로 존재하고 워커에서 pull 가능한가?
-- DB 백업, 앱과 DB 스키마의 호환성, 유지보수 창 확인이 끝났는가?
-- 운영 권한이 없는 개발 VM에서 임의의 배포나 Secret 수정을 하지 않았는가?
-- 배포 후 이미지 GET과 AutoLog API/웹이 정상인가?
+이 kubeconfig의 API server 주소는 **Tailscale에서 실제 도달 가능한 주소**여야 하고 서버 TLS 인증서 이름과도 일치해야 한다. 현재 홈랩에서 어떤 노드 IP·서브넷 라우트가 이를 만족하는지는 아직 검증하지 않았다. TLS 검증을 비활성화하지 않는다.
 
-## 6. 현재 상태와 제약
+로컬에 저장한 *제한된* kubeconfig를 안전한 PC에서 base64로 바꿔 `AUTOLOG_KUBECONFIG_B64`에 등록할 수 있다. **이 내용은 비밀번호/토큰과 같으므로 공개하거나 Git에 커밋하면 안 된다.**
 
-이 문서를 포함한 PR은 **설계 및 워크플로 코드 추가** 작업으로, 자동 CI가 GitHub에서 실제 통과했는지, GHCR 이미지가 이미 발행됐는지, self-hosted runner가 등록됐는지, Environment reviewer가 설정됐는지는 별도 확인해야 한다. **운영 배포는 실행하지 않았다.**
+```bash
+# 보안상 출력 내용을 채팅·로그에 보내지 말 것
+base64 -w0 /secure/path/autolog-deployer.kubeconfig
+```
 
-현재 실제 사용 중인 OpenStack/k8s와 코드 저장소의 매니페스트/이미지 태그가 완전히 같은지도 검증해야 한다. 실제 운영 Deployment 명칭과 Container 이름이 여기서 가정한 `lifelog-backend`/`backend`, `image-gateway`/`image-gateway`, `lifelog-frontend`/`frontend`와 맞는지 계획 모드로 먼저 검증한다.
+### 4. GHCR 이미지 읽기 권한
+
+기존 Pod가 GHCR에 로그인된 상태인지, 새 `gptproject-autolog-ci/*` 패키지를 Kubernetes 노드가 받아올 수 있는지 확인한다. 필요하면 package visibility를 공개로 전환하거나 `lifelog`에 GHCR 읽기 전용 imagePullSecret을 별도 운영 절차로 연결한다. **이 PR은 Secret 변경을 포함하지 않는다.**
+
+## 수동 CD 실행
+
+`.github/workflows/autolog-deploy.yml`은 **자동 Push 배포가 아니다**.
+
+GitHub에서 `workflow_dispatch` UI를 이용하려면 **워크플로 파일이 GitHub 기본 브랜치에도 있어야 한다.** 현재 `main`이 기본 브랜치이고 `work`는 개발 브랜치이므로, 기본 브랜치에 **동일한 수동 CD 워크플로**를 반영하거나 GitHub 기본 브랜치 정책을 바꿔야 한다. 이 변경은 별도 검토 없이 하지 않는다.
+
+실행 시 입력:
+- `release_sha`: `work` 브랜치에서 CI와 이미지 Publish가 성공한 40자리 커밋 SHA
+- `confirmation`: 정확히 `DEPLOY-LIFELOG`
+
+워크플로는 이 SHA가 `work`에 포함되는지, **해당 SHA의 CI 워크플로가 성공했는지**, GHCR 이미지가 모두 존재하는지 확인한 다음, Tailscale로 연결해 배포한다.
+
+`scripts/deploy-autolog.sh`는 기본값이 **계획 모드**다.
+
+```bash
+# 최소 RBAC kubeconfig를 가진 별도 관리 호스트에서만 테스트
+export KUBECONFIG=/secure/path/autolog-deployer.kubeconfig
+bash scripts/deploy-autolog.sh <40자리_SHA>
+```
+
+실제 apply에는 `--apply`와 `AUTOLOG_CONFIRM_DEPLOY=DEPLOY-LIFELOG`가 둘 다 있어야 한다. 자동 CD는 해당 확인 문자열과 production 환경 승인 뒤에만 실행한다. 서비스 롤아웃 중 오류가 나면 변경한 **Deployment의 `rollout undo`를 시도**하나, DB를 되돌리지는 않는다.
+
+## 중요한 점검 / 완료 기준
+
+1. PR의 Python/Frontend/Kustomize 검사가 녹색인가?
+2. `work` Push 후 세 GHCR 패키지 발행이 성공했는가?
+3. production 승인자를 활성화했는가?
+4. GitHub-hosted runner의 `tag:autolog-cd`가 Kubernetes API에 **최소 범위로** 연결되는가?
+5. 최소권한 ServiceAccount로 Deployment 정보 조회와 rollout이 가능한가?
+6. PostgreSQL 백업·복원 계획, 스키마 변경 여부 확인을 마쳤는가?
+7. 배포 후 공개 AutoLog, 이미지 GET, 글 작성, 읽기·쓰기 연동을 검증했는가?
+
+**상태:** 본 문서는 코드/설정 절차다. 클러스터 환경 비밀값 및 Tailnet 정책은 아직 구성하지 않았고, 실제 운영 배포는 실행하지 않았다.
