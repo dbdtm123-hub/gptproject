@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="820" viewBox="0 0 1600 820" role="img" aria-labelledby="title desc">
+<title id="title">OpenStack 개발 서버부터 AutoLog CI/CD까지의 구성</title>
+<desc id="desc">Codex 개발 서버에서 GitHub, GitHub Actions CI, GHCR까지 성공. 수동 승인형 Kubernetes CD는 API 네트워크 연결 확인 단계로 미완료.</desc>
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#091526"/><stop offset=".58" stop-color="#10243e"/><stop offset="1" stop-color="#0c1730"/></linearGradient>
+ <linearGradient id="accent" x1="0" x2="1"><stop stop-color="#51baff"/><stop offset="1" stop-color="#65e2b8"/></linearGradient>
+ <pattern id="dots" width="25" height="25" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#4677a6" opacity=".16"/></pattern>
+ <marker id="arrow" markerWidth="12" markerHeight="12" refX="8" refY="6" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="#81bdec" stroke-width="2"/></marker>
+ <marker id="arrowDash" markerWidth="12" markerHeight="12" refX="8" refY="6" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="#ffc45e" stroke-width="2"/></marker>
+</defs>
+<rect width="1600" height="820" rx="22" fill="url(#bg)"/>
+<rect width="1600" height="820" rx="22" fill="url(#dots)"/>
+<g font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Segoe UI, sans-serif">
+<text x="70" y="74" font-size="26" fill="#67debd" font-weight="700">AUTOLOG  /  DEVOPS JOURNEY</text>
+<text x="70" y="130" font-size="47" fill="#f5fbff" font-weight="800">OpenStack 개발 서버에서 CI/CD 파이프라인까지</text>
+<text x="70" y="166" font-size="23" fill="#9eb8d2">GitHub Actions 검사와 GHCR 이미지 발행까지 성공 · Kubernetes 운영 배포는 별도 승인 및 네트워크 검증 대기</text>
+
+<rect x="65" y="226" width="275" height="408" rx="22" fill="#142c48" stroke="#4a7da9" stroke-width="2"/>
+<rect x="82" y="243" width="110" height="33" rx="16" fill="#234d70"/><text x="137" y="267" font-size="18" text-anchor="middle" fill="#b6dcff">01  DEV</text>
+<text x="91" y="323" font-size="32" font-weight="750" fill="#f2fbff">OpenStack VM</text>
+<text x="91" y="358" font-size="24" fill="#90ceff">codex-dev01</text>
+<path d="M90 375 H313" stroke="#355777"/>
+<text x="91" y="419" font-size="22" fill="#d0e3f3">Ubuntu 24.04</text>
+<text x="91" y="453" font-size="22" fill="#d0e3f3">Codex CLI + Git</text>
+<text x="91" y="487" font-size="22" fill="#d0e3f3">Tailscale + SSH</text>
+<text x="91" y="535" font-size="19" fill="#9fbad1">로컬 브랜치 · 커밋 · 테스트</text>
+<rect x="91" y="564" width="210" height="40" rx="14" fill="#174d43" stroke="#3a997d"/>
+<text x="196" y="591" text-anchor="middle" fill="#85efc5" font-size="20" font-weight="700">개발 서버 동작 확인</text>
+
+<rect x="389" y="226" width="195" height="408" rx="22" fill="#162a46" stroke="#4d739d" stroke-width="2"/>
+<rect x="405" y="243" width="107" height="33" rx="16" fill="#234d70"/><text x="458" y="267" font-size="18" text-anchor="middle" fill="#b6dcff">02  SCM</text>
+<text x="414" y="325" font-size="31" font-weight="750" fill="#f2fbff">GitHub</text>
+<path d="M412 343 H555" stroke="#355777"/>
+<text x="414" y="389" font-size="22" fill="#d0e3f3">개발 브랜치</text>
+<text x="414" y="430" font-size="22" fill="#d0e3f3">Pull Request</text>
+<text x="414" y="471" font-size="22" fill="#d0e3f3">work 병합</text>
+<rect x="407" y="562" width="155" height="40" rx="14" fill="#174d43" stroke="#3a997d"/>
+<text x="484" y="589" text-anchor="middle" fill="#85efc5" font-size="20" font-weight="700">PR #3·4·5</text>
+
+<rect x="634" y="226" width="353" height="408" rx="22" fill="#142c48" stroke="#4a7da9" stroke-width="2"/>
+<rect x="651" y="243" width="100" height="33" rx="16" fill="#234d70"/><text x="701" y="267" font-size="18" text-anchor="middle" fill="#b6dcff">03  CI</text>
+<text x="657" y="325" font-size="32" font-weight="750" fill="#f2fbff">GitHub Actions</text>
+<path d="M657 343 H963" stroke="#355777"/>
+<circle cx="672" cy="388" r="7" fill="#52ddb0"/><text x="696" y="395" font-size="21" fill="#d8eff8">Backend + 임시 PostgreSQL</text>
+<circle cx="672" cy="431" r="7" fill="#52ddb0"/><text x="696" y="438" font-size="21" fill="#d8eff8">Image Gateway pytest</text>
+<circle cx="672" cy="474" r="7" fill="#52ddb0"/><text x="696" y="481" font-size="21" fill="#d8eff8">Frontend 타입·빌드 검사</text>
+<circle cx="672" cy="517" r="7" fill="#52ddb0"/><text x="696" y="524" font-size="21" fill="#d8eff8">Kustomize 매니페스트 확인</text>
+<rect x="660" y="564" width="285" height="40" rx="14" fill="#174d43" stroke="#3a997d"/>
+<text x="802" y="591" text-anchor="middle" fill="#85efc5" font-size="21" font-weight="700">모든 CI 검사 PASS</text>
+
+<rect x="1037" y="226" width="237" height="408" rx="22" fill="#142c48" stroke="#4a7da9" stroke-width="2"/>
+<rect x="1054" y="243" width="114" height="33" rx="16" fill="#234d70"/><text x="1111" y="267" font-size="18" text-anchor="middle" fill="#b6dcff">04  REGISTRY</text>
+<text x="1060" y="325" font-size="33" font-weight="750" fill="#f2fbff">GHCR</text>
+<path d="M1060 343 H1250" stroke="#355777"/>
+<text x="1060" y="394" font-size="22" fill="#d0e3f3">backend</text>
+<text x="1060" y="436" font-size="22" fill="#d0e3f3">frontend</text>
+<text x="1060" y="478" font-size="22" fill="#d0e3f3">image-gateway</text>
+<text x="1060" y="525" font-size="18" fill="#a8bfda">SHA 태그 이미지</text>
+<rect x="1058" y="564" width="194" height="40" rx="14" fill="#174d43" stroke="#3a997d"/>
+<text x="1155" y="591" text-anchor="middle" fill="#85efc5" font-size="20" font-weight="700">3개 발행 성공</text>
+
+<rect x="1322" y="226" width="223" height="408" rx="22" fill="#2c2a32" stroke="#cc9450" stroke-width="2"/>
+<rect x="1340" y="243" width="119" height="33" rx="16" fill="#684d2b"/><text x="1399" y="267" font-size="18" text-anchor="middle" fill="#ffdc9c">05  CD</text>
+<text x="1345" y="325" font-size="31" font-weight="750" fill="#fff5e9">Kubernetes</text>
+<path d="M1345 343 H1521" stroke="#795839"/>
+<text x="1345" y="392" font-size="20" fill="#f4dcc4">수동 승인</text>
+<text x="1345" y="430" font-size="20" fill="#f4dcc4">Tailscale 경유</text>
+<text x="1345" y="468" font-size="20" fill="#f4dcc4">최소 권한 RBAC</text>
+<text x="1345" y="512" font-size="20" fill="#ffd28c">TCP 6443 타임아웃</text>
+<rect x="1340" y="560" width="186" height="43" rx="14" fill="#554123" stroke="#c69b50"/>
+<text x="1433" y="589" text-anchor="middle" fill="#ffe2aa" font-size="20" font-weight="700">운영 미배포</text>
+
+<g fill="none" stroke="#84c3ee" stroke-width="4" marker-end="url(#arrow)">
+<path d="M342 414 H381"/><path d="M585 414 H624"/><path d="M988 414 H1027"/>
+</g>
+<path d="M1276 414 H1312" fill="none" stroke="#efb766" stroke-width="4" stroke-dasharray="8 9" marker-end="url(#arrowDash)"/>
+<text x="69" y="702" font-size="25" fill="#e6f4fe" font-weight="750">검증 기준</text>
+<rect x="69" y="721" width="690" height="59" rx="16" fill="#123d39" stroke="#2d9679"/>
+<circle cx="95" cy="751" r="9" fill="#53e5b3"/><text x="120" y="760" font-size="22" fill="#dbfff2">코드 검증 + GHCR Push = 성공 (Actions 실제 로그 확인)</text>
+<rect x="786" y="721" width="749" height="59" rx="16" fill="#523b25" stroke="#b88a50"/>
+<circle cx="813" cy="751" r="9" fill="#ffbf64"/><text x="839" y="760" font-size="22" fill="#ffedcf">CD 설정 일부 완료 · Kubernetes API 외부 접속 미해결</text>
+</g>
+</svg>
