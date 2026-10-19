@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="940" viewBox="0 0 1600 940" role="img" aria-labelledby="title desc">
+<title id="title">OpenStack 기반 AutoLog CI/CD 운영 롤아웃 성공 구성도</title>
+<desc id="desc">OpenStack 개발 VM, GitHub work 브랜치, GitHub Actions CI, GHCR 이미지 발행, production 승인, GitHub-hosted Tailscale CD 실행, Kubernetes TLS와 제한된 ServiceAccount 검증을 거쳐 애플리케이션 Deployment 3개의 순차 Rolling Update가 성공했다. 웹 기능 통합 테스트와 실제 롤백 복원은 미검증.</desc>
+<defs>
+<linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#081727"/><stop offset=".5" stop-color="#10314a"/><stop offset="1" stop-color="#13263f"/></linearGradient>
+<marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M1 1L10 6L1 11" fill="none" stroke="#86c4f2" stroke-width="2"/></marker>
+<marker id="down" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M1 1L10 6L1 11" fill="none" stroke="#6ce0bd" stroke-width="2"/></marker>
+</defs>
+<rect width="1600" height="940" rx="24" fill="url(#background)"/>
+<g font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Segoe UI, sans-serif">
+<text x="60" y="64" font-size="24" font-weight="700" fill="#59e3c6">AUTOLOG / HOMELAB DEVOPS / 2026-10-19</text>
+<text x="60" y="126" font-size="47" font-weight="800" fill="#f7fcff">OpenStack에서 Kubernetes까지 CI/CD 완성</text>
+<text x="60" y="167" font-size="23" fill="#a8c7db">실행 로그 검증: GitHub Actions 성공 · 승인형 CD · Rolling Update 3/3</text>
+<rect x="60" y="220" width="320" height="270" rx="20" fill="#152d45" stroke="#3f6178" stroke-width="2"/>
+<rect x="78" y="239" width="218" height="34" rx="17" fill="#1c4853"/>
+<text x="91" y="263" font-size="17" font-weight="700" fill="#40dcb0">01 DEVELOPMENT</text>
+<text x="86" y="322" font-size="27" font-weight="750" fill="#f3faff">OpenStack Codex VM</text><text x="88" y="354" font-size="19" fill="#bcd0df">Ubuntu + Git 작업 브랜치</text><text x="88" y="385" font-size="19" fill="#bcd0df">코드 수정 및 PR</text><text x="88" y="416" font-size="19" fill="#bcd0df">실제 홈랩 개발 환경</text>
+<rect x="435" y="220" width="320" height="270" rx="20" fill="#152d45" stroke="#3f6178" stroke-width="2"/>
+<rect x="453" y="239" width="218" height="34" rx="17" fill="#1c4853"/>
+<text x="466" y="263" font-size="17" font-weight="700" fill="#40dcb0">02 CONTINUOUS INTEGRATION</text>
+<text x="461" y="322" font-size="27" font-weight="750" fill="#f3faff">GitHub Actions CI</text><text x="463" y="354" font-size="19" fill="#bcd0df">격리 PostgreSQL 테스트</text><text x="463" y="385" font-size="19" fill="#bcd0df">Python · TypeScript · Build</text><text x="463" y="416" font-size="19" fill="#bcd0df">work 브랜치 검사 성공</text>
+<rect x="810" y="220" width="320" height="270" rx="20" fill="#152d45" stroke="#3f6178" stroke-width="2"/>
+<rect x="828" y="239" width="218" height="34" rx="17" fill="#1c4853"/>
+<text x="841" y="263" font-size="17" font-weight="700" fill="#40dcb0">03 IMAGE REGISTRY</text>
+<text x="836" y="322" font-size="27" font-weight="750" fill="#f3faff">GHCR 이미지 3종</text><text x="838" y="354" font-size="19" fill="#bcd0df">backend · frontend</text><text x="838" y="385" font-size="19" fill="#bcd0df">image-gateway</text><text x="838" y="416" font-size="19" fill="#bcd0df">SHA 태그 Push 및 Pull 성공</text>
+<rect x="1185" y="220" width="355" height="270" rx="20" fill="#152d45" stroke="#3f6178" stroke-width="2"/>
+<rect x="1203" y="239" width="218" height="34" rx="17" fill="#1c4853"/>
+<text x="1216" y="263" font-size="17" font-weight="700" fill="#40dcb0">04 APPROVAL</text>
+<text x="1211" y="322" font-size="27" font-weight="750" fill="#f3faff">production 승인</text><text x="1213" y="354" font-size="19" fill="#bcd0df">GitHub Environment 보호</text><text x="1213" y="385" font-size="19" fill="#bcd0df">수동 Release SHA 지정</text><text x="1213" y="416" font-size="19" fill="#bcd0df">Dry Run 이후 명시적 Apply</text>
+<path d="M385 352H429" stroke="#86c4f2" stroke-width="4" marker-end="url(#arrow)"/>
+<path d="M760 352H804" stroke="#86c4f2" stroke-width="4" marker-end="url(#arrow)"/>
+<path d="M1135 352H1179" stroke="#86c4f2" stroke-width="4" marker-end="url(#arrow)"/>
+<path d="M1362 495V547" stroke="#6ce0bd" stroke-width="4" marker-end="url(#down)"/>
+<rect x="60" y="560" width="450" height="231" rx="20" fill="#152d45" stroke="#3f6178" stroke-width="2"/>
+<rect x="78" y="579" width="218" height="34" rx="17" fill="#1c4853"/>
+<text x="91" y="603" font-size="17" font-weight="700" fill="#40dcb0">05 NETWORK</text>
+<text x="86" y="662" font-size="27" font-weight="750" fill="#f3faff">Tailscale CD Runner</text><text x="88" y="694" font-size="19" fill="#bcd0df">OAuth tag:autolog-cd · 임시 러너</text><text x="88" y="725" font-size="19" fill="#bcd0df">API TCP 6443 경로 승인·연결</text>
+<rect x="575" y="560" width="450" height="231" rx="20" fill="#152d45" stroke="#3f6178" stroke-width="2"/>
+<rect x="593" y="579" width="218" height="34" rx="17" fill="#1c4853"/>
+<text x="606" y="603" font-size="17" font-weight="700" fill="#40dcb0">06 AUTHORIZATION</text>
+<text x="601" y="662" font-size="27" font-weight="750" fill="#f3faff">Kubernetes TLS / RBAC</text><text x="603" y="694" font-size="19" fill="#bcd0df">CA + 서버 이름 검증 성공</text><text x="603" y="725" font-size="19" fill="#bcd0df">Deployment patch: yes · Secret get: no</text>
+<rect x="1090" y="560" width="450" height="231" rx="20" fill="#152d45" stroke="#3f6178" stroke-width="2"/>
+<rect x="1108" y="579" width="218" height="34" rx="17" fill="#1c4853"/>
+<text x="1121" y="603" font-size="17" font-weight="700" fill="#40dcb0">07 DELIVERY</text>
+<text x="1116" y="662" font-size="27" font-weight="750" fill="#f3faff">Rolling Update 성공</text><text x="1118" y="694" font-size="19" fill="#bcd0df">backend → gateway → frontend</text><text x="1118" y="725" font-size="19" fill="#bcd0df">각 2/2 Ready, rollout success</text>
+<path d="M1083 679H1032" stroke="#86c4f2" stroke-width="4" marker-end="url(#arrow)"/>
+<path d="M569 679H518" stroke="#86c4f2" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="60" y="818" width="1480" height="75" rx="14" fill="#183b49" stroke="#3b6674"/>
+<circle cx="88" cy="853" r="9" fill="#5de6b0"/><text x="109" y="860" font-size="21" fill="#e0faf2" font-weight="650">검증 완료</text>
+<text x="255" y="860" font-size="21" fill="#e0faf2">GitHub 승인형 배포 · Pod 이미지 교체 · DB pg_dump 아카이브 검사</text>
+<circle cx="88" cy="884" r="0" fill="#e6b75b"/>
+<text x="110" y="884" font-size="18" fill="#a9c8d8">별도 검증 필요: 웹 UI/업로드 종단간 동작, 복원 리허설, 단기 토큰 자동 갱신</text>
+</g>
+</svg>
