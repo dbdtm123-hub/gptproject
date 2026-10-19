@@ -9,9 +9,14 @@ on:
         description: "Full 40-char work commit with successful CI + GHCR publish"
         required: true
         type: string
-      confirmation:
-        description: "Type DEPLOY-LIFELOG after reviewing migration/backup"
+      dry_run:
+        description: "Plan only (safe default). Uncheck only after verifying backup, image pull and rollback."
         required: true
+        default: true
+        type: boolean
+      confirmation:
+        description: "Required for actual deployment: DEPLOY-LIFELOG"
+        required: false
         type: string
 
 permissions:
@@ -28,12 +33,17 @@ jobs:
     env:
       RELEASE_SHA: ${{ inputs.release_sha }}
       CONFIRMATION: ${{ inputs.confirmation }}
+      DRY_RUN: ${{ inputs.dry_run }}
     steps:
       - name: Require full SHA and human confirmation
         run: |
           set -euo pipefail
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
-          [[ "$CONFIRMATION" == "DEPLOY-LIFELOG" ]] || exit 1
+          [[ "$DRY_RUN" == "true" || "$DRY_RUN" == "false" ]] || exit 1
+          if [[ "$DRY_RUN" == "false" && "$CONFIRMATION" != "DEPLOY-LIFELOG" ]]; then
+            echo "::error::Actual deployment requires DEPLOY-LIFELOG confirmation."
+            exit 1
+          fi
 
   deploy:
     name: Approved Tailscale Kubernetes rollout
@@ -114,4 +124,9 @@ jobs:
         run: bash scripts/deploy-autolog.sh "$RELEASE_SHA"
 
       - name: Roll out only the three application Deployments
+        if: ${{ !inputs.dry_run }}
         run: bash scripts/deploy-autolog.sh "$RELEASE_SHA" --apply
+
+      - name: Confirm plan-only mode
+        if: ${{ inputs.dry_run }}
+        run: echo "PLAN ONLY confirmed. No Deployment images were changed."
