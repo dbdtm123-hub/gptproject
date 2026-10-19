@@ -33,16 +33,16 @@
 <path d="M1362 495V547" stroke="#6ce0bd" stroke-width="4" marker-end="url(#down)"/>
 <rect x="60" y="560" width="450" height="231" rx="20" fill="#152d45" stroke="#3f6178" stroke-width="2"/>
 <rect x="78" y="579" width="218" height="34" rx="17" fill="#1c4853"/>
-<text x="91" y="603" font-size="17" font-weight="700" fill="#40dcb0">05 NETWORK</text>
-<text x="86" y="662" font-size="27" font-weight="750" fill="#f3faff">Tailscale CD Runner</text><text x="88" y="694" font-size="19" fill="#bcd0df">OAuth tag:autolog-cd · 임시 러너</text><text x="88" y="725" font-size="19" fill="#bcd0df">API TCP 6443 경로 승인·연결</text>
+<text x="91" y="603" font-size="17" font-weight="700" fill="#40dcb0">07 DELIVERY</text>
+<text x="86" y="662" font-size="27" font-weight="750" fill="#f3faff">Rolling Update 성공</text><text x="88" y="694" font-size="19" fill="#bcd0df">backend → gateway → frontend</text><text x="88" y="725" font-size="19" fill="#bcd0df">각 2/2 Ready, rollout success</text>
 <rect x="575" y="560" width="450" height="231" rx="20" fill="#152d45" stroke="#3f6178" stroke-width="2"/>
 <rect x="593" y="579" width="218" height="34" rx="17" fill="#1c4853"/>
 <text x="606" y="603" font-size="17" font-weight="700" fill="#40dcb0">06 AUTHORIZATION</text>
 <text x="601" y="662" font-size="27" font-weight="750" fill="#f3faff">Kubernetes TLS / RBAC</text><text x="603" y="694" font-size="19" fill="#bcd0df">CA + 서버 이름 검증 성공</text><text x="603" y="725" font-size="19" fill="#bcd0df">Deployment patch: yes · Secret get: no</text>
 <rect x="1090" y="560" width="450" height="231" rx="20" fill="#152d45" stroke="#3f6178" stroke-width="2"/>
 <rect x="1108" y="579" width="218" height="34" rx="17" fill="#1c4853"/>
-<text x="1121" y="603" font-size="17" font-weight="700" fill="#40dcb0">07 DELIVERY</text>
-<text x="1116" y="662" font-size="27" font-weight="750" fill="#f3faff">Rolling Update 성공</text><text x="1118" y="694" font-size="19" fill="#bcd0df">backend → gateway → frontend</text><text x="1118" y="725" font-size="19" fill="#bcd0df">각 2/2 Ready, rollout success</text>
+<text x="1121" y="603" font-size="17" font-weight="700" fill="#40dcb0">05 NETWORK</text>
+<text x="1116" y="662" font-size="27" font-weight="750" fill="#f3faff">Tailscale CD Runner</text><text x="1118" y="694" font-size="19" fill="#bcd0df">OAuth tag:autolog-cd · 임시 러너</text><text x="1118" y="725" font-size="19" fill="#bcd0df">API TCP 6443 경로 승인·연결</text>
 <path d="M1083 679H1032" stroke="#86c4f2" stroke-width="4" marker-end="url(#arrow)"/>
 <path d="M569 679H518" stroke="#86c4f2" stroke-width="4" marker-end="url(#arrow)"/>
 <rect x="60" y="818" width="1480" height="75" rx="14" fill="#183b49" stroke="#3b6674"/>
