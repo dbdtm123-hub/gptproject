@@ -33,8 +33,7 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:autolog-cd
-          # Linux does not accept advertised subnet routes by default.
-          args: --accept-routes
+          # v4 already sets --accept-routes; do not pass it twice via args.
 
       - name: Read-only TCP and HTTPS probe of Kubernetes API
         shell: bash
