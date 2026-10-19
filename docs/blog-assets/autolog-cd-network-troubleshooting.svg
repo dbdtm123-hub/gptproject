@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="790" viewBox="0 0 1500 790" role="img" aria-labelledby="title desc">
+<title id="title">Kubernetes API 연결 타임아웃 진단 기록</title>
+<desc id="desc">k8s-cp01 자신에서 Kubernetes API 접속은 HTTP 200. ThinkPad와 OpenStack Controller에서 6443 접근 시 타임아웃과 HTTP 000. Security Group이나 Neutron 라우팅 같은 원인은 미확정.</desc>
+<defs>
+ <linearGradient id="back" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#0d2131"/><stop offset="1" stop-color="#172b43"/></linearGradient>
+ <marker id="arr" markerWidth="11" markerHeight="11" refX="8" refY="5.5" orient="auto"><path d="M1 1 L10 5.5 L1 10" stroke="#92b5d3" stroke-width="1.9" fill="none"/></marker>
+ <marker id="redarr" markerWidth="11" markerHeight="11" refX="8" refY="5.5" orient="auto"><path d="M1 1 L10 5.5 L1 10" stroke="#ff8d91" stroke-width="1.9" fill="none"/></marker>
+</defs>
+<rect width="1500" height="790" rx="22" fill="url(#back)"/>
+<g font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Segoe UI, sans-serif">
+<text x="54" y="64" font-size="27" font-weight="800" fill="#8ae4cf">NETWORK TROUBLESHOOTING / CD BLOCKER</text>
+<text x="54" y="124" font-size="44" font-weight="800" fill="#f0f9ff">Kubernetes API는 살아 있는데, 외부에서 접속되지 않는다</text>
+<text x="54" y="167" font-size="24" fill="#b1c9dd">같은 TCP 6443이라도 출발지에 따라 다른 결과 · 가설과 확인된 사실을 구분하자</text>
+<rect x="50" y="211" width="925" height="480" rx="20" fill="#102a41" stroke="#48728e" stroke-width="2"/>
+<text x="80" y="257" font-size="26" fill="#d5eefe" font-weight="750">실제 접속 테스트 결과</text>
+<rect x="80" y="295" width="323" height="90" rx="14" fill="#234051"/>
+<text x="101" y="329" font-size="23" fill="#f1faff" font-weight="650">k8s-cp01 내부</text>
+<text x="101" y="362" font-size="20" fill="#a9cbde">자기 API /version 요청</text>
+<path d="M418 340 H640" stroke="#75d6b4" stroke-width="4" marker-end="url(#arr)"/>
+<rect x="652" y="299" width="280" height="83" rx="14" fill="#1e594d" stroke="#35a788"/>
+<text x="671" y="335" font-size="25" fill="#d5fff1" font-weight="800">HTTP 200</text>
+<text x="671" y="366" font-size="19" fill="#b0ecdc">API 서버/리스너 정상</text>
+
+<rect x="80" y="425" width="323" height="98" rx="14" fill="#234051"/>
+<text x="101" y="463" font-size="24" fill="#f1faff" font-weight="650">ThinkPad 노트북</text>
+<text x="101" y="497" font-size="19" fill="#a9cbde">내부 API 직접 접속 시도</text>
+<path d="M418 475 H635" stroke="#ff9595" stroke-dasharray="13 10" stroke-width="4" marker-end="url(#redarr)"/>
+<rect x="652" y="431" width="280" height="85" rx="14" fill="#573640" stroke="#d2747c"/>
+<text x="671" y="466" font-size="25" fill="#ffe0e4" font-weight="800">HTTP 000 · timeout</text>
+<text x="671" y="498" font-size="19" fill="#ffc0c8">Tailscale 경로 미확인</text>
+
+<rect x="80" y="560" width="323" height="98" rx="14" fill="#234051"/>
+<text x="101" y="599" font-size="24" fill="#f1faff" font-weight="650">OpenStack 관리 노드</text>
+<text x="101" y="633" font-size="19" fill="#a9cbde">내부 IP / Floating IP 시험</text>
+<path d="M418 611 H635" stroke="#ff9595" stroke-dasharray="13 10" stroke-width="4" marker-end="url(#redarr)"/>
+<rect x="652" y="568" width="280" height="85" rx="14" fill="#573640" stroke="#d2747c"/>
+<text x="671" y="603" font-size="25" fill="#ffe0e4" font-weight="800">HTTP 000 · timeout</text>
+<text x="671" y="635" font-size="19" fill="#ffc0c8">SG·라우팅·NAT 조사 필요</text>
+
+<rect x="1010" y="211" width="441" height="480" rx="20" fill="#233444" stroke="#a27c4b" stroke-width="2"/>
+<text x="1036" y="257" font-size="28" fill="#ffdd99" font-weight="800">다음에 확인할 것</text>
+<circle cx="1048" cy="312" r="8" fill="#ffc56f"/><text x="1070" y="322" font-size="22" fill="#f1eadb">노트북의 IP 라우팅 경로</text>
+<circle cx="1048" cy="372" r="8" fill="#ffc56f"/><text x="1070" y="382" font-size="22" fill="#f1eadb">Tailscale 서브넷/ACL</text>
+<circle cx="1048" cy="432" r="8" fill="#ffc56f"/><text x="1070" y="442" font-size="22" fill="#f1eadb">Neutron Security Group</text>
+<circle cx="1048" cy="492" r="8" fill="#ffc56f"/><text x="1070" y="502" font-size="22" fill="#f1eadb">Floating IP / NAT 경로</text>
+<circle cx="1048" cy="552" r="8" fill="#ffc56f"/><text x="1070" y="562" font-size="22" fill="#f1eadb">Kubernetes API TLS SAN</text>
+<rect x="1034" y="603" width="387" height="55" rx="13" fill="#5b472d"/>
+<text x="1227" y="638" text-anchor="middle" font-size="20" fill="#ffe2ae" font-weight="750">원인 미확정 · 방화벽 임의 개방 금지</text>
+<rect x="50" y="715" width="1401" height="48" rx="13" fill="#192f42"/>
+<text x="75" y="746" font-size="21" fill="#c6e1f4">안전 원칙: 관리자 API를 0.0.0.0/0에 열지 말고, Tailscale 경로와 최소 RBAC·TLS 검증을 먼저 완성한다.</text>
+</g>
+</svg>
