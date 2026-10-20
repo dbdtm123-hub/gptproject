@@ -71,7 +71,7 @@ def settings():
             'blog_public_base': 'https://autolog.homelab.test', 'image_public_base': 'https://img.homelab.test',
             'backend_image': 'ghcr.io/owner/backend@sha256:' + 'a' * 64,
             'auth_image': 'ghcr.io/authelia/authelia@sha256:' + 'b' * 64,
-            'auth_storage_class': 'local-ssd'}
+            'auth_storage_class': 'authelia-local'}
 
 
 def test_release_requires_reviewed_digests_and_owner_policy():
@@ -94,3 +94,52 @@ def test_no_insecure_endpoints(url):
 
 def test_redirect_trailing_slash_is_preserved():
     assert https_url("https://client.homelab.test/callback/") == "https://client.homelab.test/callback/"
+
+
+def test_auth_bootstrap_without_unavailable_subject_or_backend():
+    bootstrap = {k: v for k, v in settings().items() if k in
+                 {'issuer', 'resource', 'redirect_uri', 'username', 'auth_image', 'auth_storage_class'}}
+    assert validate(bootstrap, stage='auth') == ('auth.homelab.test', 'mcp.homelab.test')
+    with pytest.raises(KeyError):
+        validate(bootstrap)
+    with pytest.raises(ValueError):
+        validate({**bootstrap, 'auth_image': 'ghcr.io/authelia/authelia:4.39.28'}, stage='auth')
+
+
+def test_existing_auth_storage_is_reference_only():
+    # Guard against accidentally adding pre-existing storage to apply/delete scope.
+    resources = (ROOT / 'k8s/auth/kustomization.yaml').read_text()
+    assert 'pvc.yaml' not in resources
+    assert not (ROOT / 'k8s/auth/pvc.yaml').exists()
+    deployment = (ROOT / 'k8s/auth/deployment.yaml').read_text()
+    assert 'claimName: autolog-auth-data' in deployment
+    assert 'kubernetes.io/hostname: k8s-worker01' in deployment
+
+
+def test_mcp_can_render_without_auth_image_but_requires_subjects():
+    values = settings()
+    values.pop('auth_image')
+    assert validate(values, stage='mcp') == ('auth.homelab.test', 'mcp.homelab.test')
+    with pytest.raises(ValueError):
+        validate({**values, 'subject_scopes': {}}, stage='mcp')
+
+
+@pytest.mark.parametrize('stage', ['auth', 'mcp', 'all'])
+@pytest.mark.parametrize('change', [
+    {'redirect_uri': ''}, {'redirect_uri': 'http://client.test/callback'},
+    {'redirect_uri': 'https://client.test/callback?secret=bad'},
+    {'auth_storage_class': 'local-ssd'}, {'auth_storage_class': 'nfs-client'},
+    {'auth_storage_class': ''}, {'issuer': 'http://auth.test'},
+    {'resource': 'https://mcp.test/wrong'},
+])
+def test_every_stage_fails_closed_for_invalid_auth_settings(stage, change):
+    with pytest.raises(ValueError):
+        validate({**settings(), **change}, stage=stage)
+
+
+@pytest.mark.parametrize('stage', ['auth', 'mcp', 'all'])
+def test_every_stage_requires_explicit_callback(stage):
+    values = settings()
+    values.pop('redirect_uri')
+    with pytest.raises(KeyError):
+        validate(values, stage=stage)

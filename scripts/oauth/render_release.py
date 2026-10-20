@@ -21,15 +21,18 @@ def origin(value):
     return u.hostname
 
 
-def validate(settings):
+def validate(settings, stage="all"):
+    if stage not in {"auth", "mcp", "all"}:
+        raise ValueError("Unknown release stage")
     auth = origin(settings['issuer'])
     if settings['issuer'] != 'https://' + auth:
         raise ValueError('Issuer must be an exact HTTPS origin without trailing slash')
     mcp = origin(settings['resource'].removesuffix('/mcp'))
     if settings['resource'] != 'https://' + mcp + '/mcp':
         raise ValueError('resource must be the exact HTTPS /mcp URL')
-    for name in ['image_public_base', 'blog_public_base']:
-        origin(settings[name])
+    if stage != 'auth':
+        for name in ['image_public_base', 'blog_public_base']:
+            origin(settings[name])
     callback = urlsplit(settings['redirect_uri'])
     if callback.scheme != 'https' or not callback.hostname or '*' in settings['redirect_uri'] or any(c.isspace() for c in settings['redirect_uri']) or callback.username or callback.password or callback.query or callback.fragment:
         raise ValueError('Register the exact HTTPS ChatGPT redirect URI without wildcard')
@@ -38,23 +41,22 @@ def validate(settings):
     # SQLite requires a reviewed locking-safe local/block volume.
     # Never silently select the cluster's default NFS StorageClass.
     storage_class = settings.get('auth_storage_class')
-    if (not isinstance(storage_class, str) or not 1 <= len(storage_class) <= 253
-            or not re.fullmatch(r'[a-z0-9](?:[-a-z0-9.]*[a-z0-9])?', storage_class)
-            or 'nfs' in storage_class.lower()):
-        raise ValueError('Set a reviewed non-NFS local/block auth_storage_class explicitly')
-    for name in ['backend_image', 'auth_image']:
+    if storage_class != 'authelia-local':
+        raise ValueError('Existing PVC must use the reviewed auth_storage_class=authelia-local')
+    images = {'auth': ['auth_image'], 'mcp': ['backend_image'], 'all': ['backend_image', 'auth_image']}
+    for name in images[stage]:
         if not re.fullmatch(r'[a-zA-Z0-9./_-]+@sha256:[0-9a-f]{64}', settings[name]):
             raise ValueError('Reviewed registry image digest required: ' + name)
-    if not settings['subject_scopes'] or any(not isinstance(k, str) or not k or not isinstance(v, list)
-            or not v or not set(v) <= {'autolog:read', 'autolog:write'} for k, v in settings['subject_scopes'].items()):
+    if stage != 'auth' and (not settings['subject_scopes'] or any(not isinstance(k, str) or not k or not isinstance(v, list)
+            or not v or not set(v) <= {'autolog:read', 'autolog:write'} for k, v in settings['subject_scopes'].items())):
         raise ValueError('Explicit nonempty subject -> scope list required')
     if any('example.com' in str(v) or 'REPLACE' in str(v) or '.invalid' in str(v) for v in settings.values()):
         raise ValueError('Unresolved example value')
     return auth, mcp
 
 
-def render(settings, output):
-    auth, mcp = validate(settings)
+def render(settings, output, stage="all"):
+    auth, mcp = validate(settings, stage)
     output = output.resolve()
     deploy = (ROOT / '.deploy').resolve()
     if not output.is_relative_to(deploy):
@@ -63,7 +65,10 @@ def render(settings, output):
     # Temporary overlay beneath repository to use normal Kustomize load restrictions.
     with tempfile.TemporaryDirectory(prefix='oauth-render-', dir=deploy) as tmp:
         parent = Path(tmp)
-        for kind, base in [('auth', 'auth'), ('mcp', 'mcp')]:
+        stages = [('auth', 'auth'), ('mcp', 'mcp')]
+        for kind, base in stages:
+            if stage != 'all' and kind != stage:
+                continue
             work = parent / kind
             work.mkdir()
             # Copy checked-in bases into the isolated render workspace; this
@@ -78,11 +83,7 @@ def render(settings, output):
                 config = config.replace('https://REPLACE-WITH-EXACT-CHATGPT-CALLBACK.invalid/callback', settings['redirect_uri'])
                 config = config.replace('subject: user:owner', 'subject: ' + json.dumps('user:' + settings['username']))
                 (work / 'configuration.yml').write_text(config)
-                pvc = {'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim',
-                       'metadata': {'name': 'autolog-auth-data'},
-                       'spec': {'storageClassName': settings['auth_storage_class']}}
-                (work / 'auth-pvc-patch.json').write_text(json.dumps(pvc))
-                k['patches'] = [{'path': 'auth-pvc-patch.json'}]
+                # Existing PV/PVC are observed by preflight, never patched or applied.
                 k['images'] = [{'name': 'ghcr.io/authelia/authelia', 'newName': settings['auth_image'].split('@')[0],
                                 'digest': settings['auth_image'].split('@')[1]}]
                 k['configMapGenerator'] = [{'name': 'autolog-auth-config', 'behavior': 'replace', 'files': ['configuration.yml']}]
@@ -122,8 +123,11 @@ def render(settings, output):
                 raise RuntimeError(f'Kustomize rendering failed for {kind}: {reason}')
             (output / (kind + '.yaml')).write_text(result.stdout)
     (output / 'settings.json').write_text(json.dumps(settings, indent=2) + '\n')
-    fragment = (ROOT / 'k8s/examples/cloudflared-auth-ingress.yaml.example').read_text().replace('auth.example.com', auth)
-    fragment += (ROOT / 'k8s/examples/cloudflared-mcp-ingress.yaml.example').read_text().replace('mcp.example.com', mcp)
+    fragment = ''
+    if stage in {'auth', 'all'}:
+        fragment += (ROOT / 'k8s/examples/cloudflared-auth-ingress.yaml.example').read_text().replace('auth.example.com', auth)
+    if stage in {'mcp', 'all'}:
+        fragment += (ROOT / 'k8s/examples/cloudflared-mcp-ingress.yaml.example').read_text().replace('mcp.example.com', mcp)
     (output / 'tunnel-fragment.yml').write_text(fragment)
     print('Rendered for review only: ' + str(output))
 
@@ -132,5 +136,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--settings', required=True)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--stage', choices=['auth', 'mcp', 'all'], default='all')
     args = parser.parse_args()
-    render(json.loads(Path(args.settings).read_text()), Path(args.output))
+    render(json.loads(Path(args.settings).read_text()), Path(args.output), args.stage)

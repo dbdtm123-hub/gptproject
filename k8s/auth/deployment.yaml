@@ -21,6 +21,8 @@ spec:
       labels:
         app: autolog-auth
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: k8s-worker01
       serviceAccountName: autolog-auth
       automountServiceAccountToken: false
       securityContext:

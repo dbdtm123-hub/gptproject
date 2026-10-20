@@ -107,29 +107,10 @@ jobs:
           for path in k8s/platform k8s/database k8s/migration k8s/backend k8s/frontend k8s/networking k8s/ingress k8s/image-gateway k8s/mcp k8s/auth; do
             kubectl kustomize "$path" > /dev/null
           done
-      - name: Render OAuth release with synthetic nonsecret settings (no cluster access)
+      - name: Validate independent OAuth release rendering (no cluster access)
         run: |
-          mkdir -p .deploy
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          settings = {
-              "issuer": "https://auth.homelab.test",
-              "resource": "https://mcp.homelab.test/mcp",
-              "redirect_uri": "https://chatgpt.com/auth/callback-for-test",
-              "username": "owner",
-              "auth_storage_class": "local-ssd",
-              "subject_scopes": {"example-owner-id": ["autolog:read", "autolog:write"]},
-              "blog_public_base": "https://autolog.homelab.test",
-              "image_public_base": "https://img.homelab.test",
-              "backend_image": "ghcr.io/example/backend@sha256:" + "a" * 64,
-              "auth_image": "ghcr.io/authelia/authelia@sha256:" + "b" * 64,
-          }
-          Path(".deploy/ci-oauth-settings.json").write_text(json.dumps(settings))
-          PY
-          python scripts/oauth/render_release.py --settings .deploy/ci-oauth-settings.json --output .deploy/ci-oauth-release
-          grep -q 'storageClassName: local-ssd' .deploy/ci-oauth-release/auth.yaml
-          grep -q 'AUTOLOG_MCP_ACCESS_TOKEN_FORMAT: authelia_opaque_v4' .deploy/ci-oauth-release/mcp.yaml
+          python -m pip install PyYAML==6.0.2
+          python scripts/oauth/check_release_render.py
       - name: Render application release without cluster access
         run: |
           python scripts/render-k8s.py \

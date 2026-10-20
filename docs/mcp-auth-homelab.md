@@ -1,5 +1,8 @@
 # AutoLog MCP 홈랩 인증 서버 배포 준비
 
+> 확정된 운영 조건과 기존 local PV/PVC 재사용 절차는 [운영 배포 절차](mcp-production-deployment.md)를 우선한다.
+> Auth 배포는 PVC를 생성하지 않으며 Cinder를 사용하지 않는다.
+
 기준: `work`의 `0e1048760a071b24aa0d64a65e163299e13521ba`, 검토일 2026-10-20.
 이 문서는 운영 변경 승인이 아니다. 기존 lifelog·PostgreSQL·Garage·image-gateway·Cloudflare Tunnel·Sites 플러그인은 유지한다.
 
@@ -68,7 +71,7 @@ ID token을 access token으로 사용하지 않는다. 사용자 OAuth token은 
 flowchart LR
   C[ChatGPT] -->|OAuth login / code + S256| T[Existing Cloudflare Tunnel]
   T --> A[autolog-auth:9091]
-  A --> D[(New 1Gi PVC / SQLite)]
+  A --> D[(Existing local PVC / SQLite)]
   C -->|Bearer / Streamable HTTP| T
   T --> M[autolog-mcp:8080]
   M -->|HTTPS introspection / separate credential| T
@@ -86,7 +89,7 @@ Auth 재시작은 브라우저 로그인 세션을 잃을 수 있다. OAuth stat
 Auth 장애 시 MCP는 fail closed하지만 AutoLog CMS/API·Garage 이미지 읽기는 auth를 경유하지 않으므로 계속 동작한다.
 MCP에도 DB/S3/관리자 암호를 주입하지 않는다. 기존 backend API_TOKEN 공유로 인해 MCP 침해 시 기존 쓰기 권한 범위가 노출될 수 있으므로 owner 정책을 유지한다.
 
-`k8s/auth`는 auth Deployment·SA·Service·PVC·ConfigMap·NetworkPolicy만 포함한다.
+`k8s/auth`는 auth Deployment·SA·Service·ConfigMap·NetworkPolicy만 포함한다.
 기본 ConfigMap에는 예제 주소가 있으므로 그대로 apply하지 않는다. `k8s/mcp`와 별도로 렌더링·승인·배포한다.
 기존 앱 일괄 배포 스크립트와 production deploy workflow는 이번 배포에 사용하지 않는다.
 
