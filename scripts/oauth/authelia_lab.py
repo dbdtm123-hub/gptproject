@@ -206,7 +206,10 @@ def run_checks(directory, credentials):
                                              headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/json, text/event-stream'})
                 finally:
                     mcp_auth.httpx.AsyncClient = original_auth_client
-        check(asyncio.run(call(tokens['access_token'], 'initialize')).status_code == 200, 'real token MCP initialize')
+        initialize_result = asyncio.run(call(tokens['access_token'], 'initialize'))
+        if initialize_result.status_code != 200:
+            print('LAB_MCP_INITIALIZE_STATUS ' + str(initialize_result.status_code), flush=True)
+        check(initialize_result.status_code == 200, 'real token MCP initialize')
         listed = asyncio.run(call(tokens['access_token']))
         check(listed.status_code == 200 and len(listed.json()['result']['tools']) == 11, 'real token MCP tools/list 11')
         settings.allowed_subjects = ['unrelated-user']
