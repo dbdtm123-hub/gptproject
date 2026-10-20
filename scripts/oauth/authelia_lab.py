@@ -152,9 +152,20 @@ def run_checks(directory, credentials):
         check(response.status_code == 200, 'separate Basic introspection client')
         claims = response.json()
         aud = claims.get('aud', [])
-        check(claims.get('active') is True and claims.get('iss') == ISSUER and RESOURCE in aud
-              and claims.get('exp', 0) > time.time() and isinstance(claims.get('sub'), str)
-              and {'autolog:read', 'autolog:write'} <= set(claims.get('scope', '').split()), 'strict MCP claims contract')
+        claim_checks = {
+            'active': claims.get('active') is True,
+            'issuer_matches': claims.get('iss') == ISSUER,
+            'audience_contains_resource': RESOURCE in aud,
+            'expiry_future': isinstance(claims.get('exp'), (int, float)) and claims['exp'] > time.time(),
+            'subject_present': isinstance(claims.get('sub'), str) and bool(claims['sub']),
+            'read_write_scopes': {'autolog:read', 'autolog:write'} <= set(claims.get('scope', '').split()),
+        }
+        if not all(claim_checks.values()):
+            # Only report response *field names* and pass/fail booleans. Token
+            # values, subject identities, and scope contents stay private.
+            print('LAB_INTROSPECTION_FIELDS ' + json.dumps(sorted(claims.keys())), flush=True)
+            print('LAB_INTROSPECTION_CHECKS ' + json.dumps(claim_checks, sort_keys=True), flush=True)
+        check(all(claim_checks.values()), 'strict MCP claims contract')
         check(introspect('invalid-' + secrets.token_urlsafe(32)).json().get('active') is False, 'invalid token inactive')
         check(browser.post(discovery['introspection_endpoint'], auth=(auth[0], 'incorrect'),
                            data={'token': tokens['access_token']}).status_code in [400, 401], 'incorrect introspection credential denied')
