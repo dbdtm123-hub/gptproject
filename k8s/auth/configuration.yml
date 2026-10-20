@@ -56,12 +56,6 @@ identity_providers:
     enable_pkce_plain_challenge: false
     enable_jwt_access_token_stateless_introspection: false
     authorization_policies:
-      introspection_denied:
-        default_policy: deny
-        # The policy must have an explicit rule to be accepted by Authelia.
-        rules:
-          - policy: deny
-            subject: user:owner
       owner:
         default_policy: deny
         rules:
@@ -99,7 +93,9 @@ identity_providers:
         client_name: AutoLog introspection only
         client_secret: '{{ secret "/secrets/introspection.hash" }}'
         public: false
-        authorization_policy: introspection_denied
+        # Required by Authelia for a non-interactive client; no browser login grant
+        # is configured. MCP still checks exact audience, subject, and scopes.
+        authorization_policy: one_factor
         scopes: []
         grant_types: [client_credentials]
         response_types: []
