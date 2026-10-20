@@ -58,6 +58,10 @@ identity_providers:
     authorization_policies:
       introspection_denied:
         default_policy: deny
+        # The policy must have an explicit rule to be accepted by Authelia.
+        rules:
+          - policy: deny
+            subject: user:owner
       owner:
         default_policy: deny
         rules:
@@ -88,7 +92,7 @@ identity_providers:
         response_types: [code]
         response_modes: [query]
         consent_mode: explicit
-        authorization_signed_response_alg: none
+        authorization_signed_response_alg: RS256
         token_endpoint_auth_method: client_secret_basic
         access_token_signed_response_alg: none
       - client_id: autolog-resource-server
