@@ -246,11 +246,14 @@ def main():
         args = ['docker', 'run', '--rm', '--network', 'host', '--user', f'{os.getuid()}:{os.getgid()}',
                 '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--tmpfs', '/tmp:rw,size=32m',
                 *mounts, '--entrypoint', 'authelia', IMAGE]
+        stage = 'container configuration validation'
         try:
             subprocess.run([*args, 'validate-config', '--config', '/config/configuration.yml',
                             '--config.experimental.filters=template'], check=True, capture_output=True)
+            stage = 'container launch'
             subprocess.run([*args[:3], '-d', '--name', container, *args[3:], '--config', '/config/configuration.yml',
                             '--config.experimental.filters=template'], check=True, capture_output=True)
+            stage = 'provider startup and OAuth checks'
             context = ssl.create_default_context(cafile=str(directory / 'secrets/tls.crt'))
             for _ in range(60):
                 try:
@@ -264,6 +267,7 @@ def main():
                 raise RuntimeError('Authelia lab startup failed')
             run_checks(directory, credentials)
             # Point-in-time sample, not an idle/load benchmark.
+            stage = 'one-shot container resource sample'
             stats = subprocess.run(['docker', 'stats', '--no-stream', '--format', '{{.CPUPerc}} {{.MemUsage}}', container],
                                    capture_output=True, text=True, check=True)
             print('LAB_SAMPLE ' + stats.stdout.strip())
@@ -271,7 +275,8 @@ def main():
             raise SystemExit('Authelia lab failed; last PASS label identifies progress. No HTTP body or URL printed.') from None
         except subprocess.CalledProcessError as error:
             # Do not dump provider logs/config/HTTP bodies: they can contain credentials/codes.
-            raise SystemExit('Authelia command failed (details withheld); inspect locally without publishing secrets') from error
+            raise SystemExit(f'Authelia command failed during {stage} (exit {error.returncode}); '
+                             'details withheld to protect test credentials') from error
         finally:
             subprocess.run(['docker', 'rm', '-f', container], capture_output=True)
 
