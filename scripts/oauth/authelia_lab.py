@@ -151,6 +151,15 @@ def run_checks(directory, credentials):
         response = introspect(tokens['access_token'])
         check(response.status_code == 200, 'separate Basic introspection client')
         claims = response.json()
+        if claims.get('active') is not True:
+            # Compare the issuing client with the dedicated introspection
+            # client, without recording any token or identity value.
+            own = browser.post(discovery['introspection_endpoint'], auth=client_auth,
+                               data={'token': tokens['access_token'], 'token_type_hint': 'access_token'})
+            print('LAB_INTROSPECTION_ISSUER_CLIENT ' + json.dumps({
+                'http_200': own.status_code == 200,
+                'active': own.status_code == 200 and own.json().get('active') is True,
+            }, sort_keys=True), flush=True)
         aud = claims.get('aud', [])
         claim_checks = {
             'active': claims.get('active') is True,
