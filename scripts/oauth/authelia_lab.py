@@ -285,7 +285,7 @@ def main():
                     stderr = stderr.replace((directory / 'secrets' / filename).read_text(), '<REDACTED>')
                 shown = 0
                 for line in stderr.splitlines():
-                    if any(word in line.lower() for word in ('error', 'invalid', 'unknown', 'failed', 'configuration', 'level=', ' msg=', ' field=')):
+                    if (line.lstrip().startswith('- ') or any(word in line.lower() for word in ('error', 'invalid', 'unknown', 'failed', 'configuration', 'level=', ' msg=', ' field='))):
                         # Cap diagnostics and avoid multiline/private-key output.
                         if '-----BEGIN' in line or '-----END' in line:
                             continue
