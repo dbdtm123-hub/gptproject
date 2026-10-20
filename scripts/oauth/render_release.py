@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 from urllib.parse import urlsplit
@@ -65,8 +66,12 @@ def render(settings, output):
         for kind, base in [('auth', 'auth'), ('mcp', 'mcp')]:
             work = parent / kind
             work.mkdir()
+            # Copy checked-in bases into the isolated render workspace; this
+            # respects normal Kustomize load restrictions without disabling
+            # the filesystem boundary for production rendering.
+            shutil.copytree(ROOT / 'k8s' / base, work / 'base')
             k = {'apiVersion': 'kustomize.config.k8s.io/v1beta1', 'kind': 'Kustomization',
-                 'resources': [str(ROOT / 'k8s' / base)]}
+                 'resources': ['base']}
             if kind == 'auth':
                 config = (ROOT / 'k8s/auth/configuration.yml').read_text()
                 config = config.replace('auth.example.com', auth).replace('https://mcp.example.com/mcp', settings['resource'])
@@ -109,7 +114,12 @@ def render(settings, output):
                 (work / 'provider.json').write_text(json.dumps(policy))
                 k['resources'].append('provider.json')
             (work / 'kustomization.yaml').write_text(json.dumps(k))
-            result = subprocess.run(['kubectl', 'kustomize', str(work)], capture_output=True, text=True, check=True)
+            result = subprocess.run(['kubectl', 'kustomize', str(work)], capture_output=True, text=True)
+            if result.returncode:
+                # This renderer writes only public settings and Secret *refs*.
+                # Limit command diagnostics, never dump rendered manifest bodies.
+                reason = ' '.join(result.stderr.splitlines())[:600]
+                raise RuntimeError(f'Kustomize rendering failed for {kind}: {reason}')
             (output / (kind + '.yaml')).write_text(result.stdout)
     (output / 'settings.json').write_text(json.dumps(settings, indent=2) + '\n')
     fragment = (ROOT / 'k8s/examples/cloudflared-auth-ingress.yaml.example').read_text().replace('auth.example.com', auth)
