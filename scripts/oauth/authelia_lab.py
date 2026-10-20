@@ -278,14 +278,14 @@ def main():
             # validation diagnostics after redacting generated passwords and keys.
             # Never print HTTP responses, access tokens, or entire provider logs.
             if stage == 'container configuration validation':
-                stderr = (error.stderr or b'').decode('utf-8', errors='replace')
+                stderr = ((error.stdout or b'') + b'\n' + (error.stderr or b'')).decode('utf-8', errors='replace')
                 for generated in credentials.values():
                     stderr = stderr.replace(generated, '<REDACTED>')
                 for filename in ['session', 'storage', 'reset', 'hmac', 'chatgpt.hash', 'introspection.hash']:
                     stderr = stderr.replace((directory / 'secrets' / filename).read_text(), '<REDACTED>')
                 shown = 0
                 for line in stderr.splitlines():
-                    if any(word in line.lower() for word in ('error', 'invalid', 'unknown', 'failed', 'configuration')):
+                    if any(word in line.lower() for word in ('error', 'invalid', 'unknown', 'failed', 'configuration', 'level=', ' msg=', ' field=')):
                         # Cap diagnostics and avoid multiline/private-key output.
                         if '-----BEGIN' in line or '-----END' in line:
                             continue
