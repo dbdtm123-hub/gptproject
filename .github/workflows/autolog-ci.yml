@@ -104,7 +104,7 @@ jobs:
       - name: Validate checked-in Kustomize bases
         run: |
           set -euo pipefail
-          for path in k8s/platform k8s/database k8s/migration k8s/backend k8s/frontend k8s/networking k8s/ingress k8s/image-gateway k8s/mcp; do
+          for path in k8s/platform k8s/database k8s/migration k8s/backend k8s/frontend k8s/networking k8s/ingress k8s/image-gateway k8s/mcp k8s/auth; do
             kubectl kustomize "$path" > /dev/null
           done
       - name: Render application release without cluster access

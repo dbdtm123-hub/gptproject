@@ -1,0 +1,28 @@
+name: AutoLog real OAuth compatibility lab
+on:
+  push:
+    branches: [work]
+    paths: ['backend/app/mcp_*.py', 'scripts/oauth/**', 'k8s/auth/**', 'tests/oauth/**', '.github/workflows/oauth-lab.yml']
+  pull_request:
+    branches: [work]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  authelia:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: python -m pip install --require-hashes -r backend/requirements-dev.txt
+      - name: Offline OAuth verification guards
+        run: python -m pytest -q tests/oauth
+      - name: Isolated lab hostname (runner only)
+        run: echo '127.0.0.1 auth.autolog.test' | sudo tee -a /etc/hosts > /dev/null
+      - name: Real provider login and OAuth/MCP compatibility
+        run: python scripts/oauth/authelia_lab.py

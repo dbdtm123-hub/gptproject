@@ -14,6 +14,7 @@ class MCPSettings(BaseSettings):
     introspection_client_id: str = ""
     introspection_client_secret: SecretStr = SecretStr("")
     allowed_subjects: list[str] = []
+    subject_scopes: dict[str, list[str]] = {}
     allowed_origins: list[str] = []
     backend_url: str = "http://lifelog-backend:8000"
     backend_token: SecretStr = SecretStr("")

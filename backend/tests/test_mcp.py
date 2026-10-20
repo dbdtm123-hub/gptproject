@@ -23,7 +23,7 @@ def environment(monkeypatch):
         monkeypatch.setattr(module, "get_mcp_settings", lambda: s)
     mcp_tools.image_cache.clear()
     claims = {"active": True, "iss": s.issuer, "aud": s.resource, "exp": time.time() + 300,
-              "sub": "owner", "scope": "autolog:read autolog:write"}
+              "token_type": "Bearer", "token_use": "access_token", "sub": "owner", "scope": "autolog:read autolog:write"}
     async def introspect(token):
         assert token == "oauth-token"
         return claims
@@ -250,3 +250,20 @@ def test_introspection_uses_separate_credentials_and_bounded_fixed_endpoint(envi
         module.get_mcp_settings = lambda: environment[0]
         assert await module.introspect('oauth-token') == {'active': True}
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("change", [
+    {"token_type": None}, {"token_type": "DPoP"}, {"token_use": "refresh_token"},
+    {"sub": []}, {"sub": {}},
+])
+def test_oauth_rejects_non_access_tokens_and_malformed_subject(environment, change):
+    environment[1].update(change)
+    assert send(rpc()).status_code == 401
+
+
+def test_subject_scope_ceiling(environment):
+    environment[0].subject_scopes = {"owner": ["autolog:read"]}
+    assert send(rpc()).status_code == 200
+    assert send(rpc("tools/call", {"name": "create_article", "arguments": {}})).status_code == 403
+    environment[0].subject_scopes = {"different-owner": ["autolog:read", "autolog:write"]}
+    assert send(rpc()).status_code == 403

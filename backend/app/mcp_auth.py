@@ -53,8 +53,14 @@ async def authenticate(request: Request) -> dict:
     if (not valid or claims.get("active") is not True or claims.get("iss") != settings.issuer
             or not isinstance(audience, list) or settings.resource not in audience
             or not isinstance(expiry, (int, float)) or isinstance(expiry, bool) or not time.time() < expiry < float("inf")
-            or claims.get("sub") not in settings.allowed_subjects or not isinstance(claims.get("scope"), str)):
+            or not isinstance(claims.get("sub"), str) or claims.get("sub") not in settings.allowed_subjects
+            or not isinstance(claims.get("scope"), str)
+            or not isinstance(claims.get("token_type"), str) or claims["token_type"].lower() != "bearer"
+            or claims.get("token_use", "access_token") != "access_token"):
         raise HTTPException(401, "Invalid OAuth access token", headers={"WWW-Authenticate": challenge()})
+    if settings.subject_scopes:
+        permitted = settings.subject_scopes.get(claims["sub"], [])
+        claims = {**claims, "scope": " ".join(scope for scope in claims["scope"].split() if scope in permitted)}
     return claims
 
 

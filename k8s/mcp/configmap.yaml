@@ -8,6 +8,7 @@ data:
   AUTOLOG_MCP_INTROSPECTION_URL: https://identity.example.com/introspect
   AUTOLOG_MCP_INTROSPECTION_CLIENT_ID: autolog-resource-server
   AUTOLOG_MCP_ALLOWED_SUBJECTS: '[]'
+  AUTOLOG_MCP_SUBJECT_SCOPES: '{}'
   AUTOLOG_MCP_ALLOWED_ORIGINS: '["https://chatgpt.com"]'
   AUTOLOG_MCP_BACKEND_URL: http://lifelog-backend:8000
   AUTOLOG_MCP_IMAGE_PUBLIC_BASE: https://img.example.com

@@ -1,0 +1,8 @@
+# Store the populated file in the NEW auth Secret, never in Git.
+users:
+  owner:
+    disabled: false
+    displayname: AutoLog Owner
+    password: REPLACE_WITH_ARGON2ID_HASH
+    email: owner@example.com
+    groups: [autolog-owner]

@@ -1,0 +1,7 @@
+# Fragment ONLY: merge before the existing final catch-all after approval.
+# Auth has its own login. Do not place interactive Cloudflare Access in front.
+# Preserve the Tunnel ID/credential and every existing AutoLog/Garage/Sites route.
+- hostname: auth.example.com
+  service: http://autolog-auth.lifelog.svc.cluster.local:9091
+  originRequest:
+    httpHostHeader: auth.example.com

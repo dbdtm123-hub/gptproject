@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: autolog-auth
+spec:
+  selector:
+    app: autolog-auth
+  ports:
+    - name: http
+      port: 9091
+      targetPort: http
+  type: ClusterIP

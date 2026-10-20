@@ -24,3 +24,5 @@ frontend의 --frontend-service ClusterIP 옵션은 TLS Ingress 전환용이다.
 OpenAI Secret은 backend에만 주입한다. 미설정 시 수동 기록만 가능하다.
 전체 출력 디렉터리나 placeholder Secret을 일괄 apply하지 않는다.
 단일 PostgreSQL은 HA가 아니며 영속 데이터 백업과 별도 복원 검증이 필요하다.
+
+독립 MCP 및 인증 서버는 `k8s/mcp`, `k8s/auth`를 사용하며 기존 앱 일괄 배포에 포함하지 않는다. [OAuth 홈랩 운영 문서](../docs/mcp-auth-homelab.md)에 따라 후보 검증과 별도 승인을 거친다. 예제 base를 운영에 바로 apply하지 않는다.

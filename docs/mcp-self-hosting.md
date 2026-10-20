@@ -109,3 +109,7 @@ CI는 임시 PostgreSQL backend 전체, gateway 전체, frontend tests/build 및
 9. 새 연결이 검증된 뒤에만 기본 연결을 바꾼다. 기존 Sites는 그 전까지 유지한다. Rollback은 새 MCP 버전/연결을 복구하고 기존 Sites를 사용한다. DB/Garage objects는 유지한다.
 
 남은 외부 작업은 IdP/client/subject 설정, ChatGPT 연결 승인, 실제 FileRef 정책 확정과 DNS/Tunnel/Kubernetes/Garage 통합 검증이다. Resource-server/auth/file/API adapter 코드는 저장소에 구현되어 Sites 소스 없이 테스트할 수 있다.
+
+## 홈랩 인증 서버 구축
+
+IdP가 없는 환경의 후보 비교·독립 배포·실제 OAuth 검증·운영 복구는 [홈랩 인증 서버 배포 준비](mcp-auth-homelab.md)를 따른다. Authelia는 실증 전 후보이며 ChatGPT 연결 성공으로 간주하지 않는다. MCP는 introspection의 bearer access-token 종류도 검증하고 선택적 `AUTOLOG_MCP_SUBJECT_SCOPES`로 사용자별 scope 상한을 적용한다. 기존 Sites와 운영 서비스/Secret은 유지한다.
