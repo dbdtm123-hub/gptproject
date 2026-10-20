@@ -190,6 +190,13 @@ def run_checks(directory, credentials):
             'token_use_present': 'token_use' in claims,
             'token_use_access': claims.get('token_use', 'access_token') == 'access_token',
         }, sort_keys=True), flush=True)
+        refresh_probe = introspect(tokens['refresh_token']).json()
+        print('LAB_REFRESH_TOKEN_PROBE ' + json.dumps({
+            'active': refresh_probe.get('active') is True,
+            'same_claim_keys': sorted(refresh_probe.keys()) == sorted(claims.keys()),
+            'access_prefix': tokens['access_token'].startswith('authelia_at_'),
+            'refresh_prefix': tokens['refresh_token'].startswith('authelia_rt_'),
+        }, sort_keys=True), flush=True)
         check(introspect('invalid-' + secrets.token_urlsafe(32)).json().get('active') is False, 'invalid token inactive')
         check(browser.post(discovery['introspection_endpoint'], auth=(auth[0], 'incorrect'),
                            data={'token': tokens['access_token']}).status_code in [400, 401], 'incorrect introspection credential denied')
