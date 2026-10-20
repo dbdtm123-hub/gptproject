@@ -20,6 +20,11 @@ authentication_backend:
     path: /secrets/users.yml
 access_control:
   default_policy: deny
+  # Authelia 4.39 requires at least one rule when the fallback policy is deny.
+  # No reverse-proxy forward-auth routes are intentionally granted.
+  rules:
+    - domain: auth.example.com
+      policy: deny
 session:
   name: autolog_auth_session
   secret: '{{ secret "/secrets/session" }}'
