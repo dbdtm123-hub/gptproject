@@ -274,9 +274,27 @@ def main():
         except (httpx.HTTPError, ValueError, KeyError, RuntimeError):
             raise SystemExit('Authelia lab failed; last PASS label identifies progress. No HTTP body or URL printed.') from None
         except subprocess.CalledProcessError as error:
-            # Do not dump provider logs/config/HTTP bodies: they can contain credentials/codes.
+            # Only this disposable lab generates its own credentials. Print narrow
+            # validation diagnostics after redacting generated passwords and keys.
+            # Never print HTTP responses, access tokens, or entire provider logs.
+            if stage == 'container configuration validation':
+                stderr = (error.stderr or b'').decode('utf-8', errors='replace')
+                for generated in credentials.values():
+                    stderr = stderr.replace(generated, '<REDACTED>')
+                for filename in ['session', 'storage', 'reset', 'hmac', 'chatgpt.hash', 'introspection.hash']:
+                    stderr = stderr.replace((directory / 'secrets' / filename).read_text(), '<REDACTED>')
+                shown = 0
+                for line in stderr.splitlines():
+                    if any(word in line.lower() for word in ('error', 'invalid', 'unknown', 'failed', 'configuration')):
+                        # Cap diagnostics and avoid multiline/private-key output.
+                        if '-----BEGIN' in line or '-----END' in line:
+                            continue
+                        print('LAB_VALIDATION_DIAG ' + line[:400], flush=True)
+                        shown += 1
+                        if shown >= 12:
+                            break
             raise SystemExit(f'Authelia command failed during {stage} (exit {error.returncode}); '
-                             'details withheld to protect test credentials') from error
+                             'full details withheld to protect test credentials') from error
         finally:
             subprocess.run(['docker', 'rm', '-f', container], capture_output=True)
 
