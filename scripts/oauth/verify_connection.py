@@ -48,7 +48,7 @@ def discovery(client, issuer):
     return data
 
 
-def validate_claims(claims, issuer, resource, subject, scopes):
+def validate_claims(claims, issuer, resource, subject, scopes, *, token='', access_token_format='rfc7662'):
     require(isinstance(claims, dict), 'Introspection is not a JSON object')
     aud = claims.get('aud', [])
     if isinstance(aud, str):
@@ -60,8 +60,13 @@ def validate_claims(claims, issuer, resource, subject, scopes):
     require(type(exp) in [int, float] and time.time() < exp < float('inf'), 'Token expired or invalid expiry')
     require(isinstance(claims.get('sub'), str) and claims['sub'] == subject, 'Wrong subject')
     require(isinstance(claims.get('scope'), str) and set(scopes) <= set(claims['scope'].split()), 'Missing scopes')
-    require(isinstance(claims.get('token_type'), str) and claims['token_type'].lower() == 'bearer'
-            and claims.get('token_use', 'access_token') == 'access_token', 'Not a bearer access token')
+    standard_access = (isinstance(claims.get('token_type'), str)
+                       and claims['token_type'].lower() == 'bearer'
+                       and claims.get('token_use', 'access_token') == 'access_token')
+    authelia_access = (access_token_format == 'authelia_opaque_v4'
+                       and 'token_type' not in claims and 'token_use' not in claims
+                       and token.startswith('authelia_at_'))
+    require(standard_access or authelia_access, 'Not a verified bearer access token')
 
 
 def begin(args, client):
@@ -115,7 +120,8 @@ def finish(args, client):
     response = client.post(doc['introspection_endpoint'], auth=(rs_id, rs_secret),
                            data={'token': tokens['access_token'], 'token_type_hint': 'access_token'})
     require(response.status_code == 200, 'Introspection failed')
-    validate_claims(response.json(), values['issuer'], values['resource'], subject, ['autolog:read', 'autolog:write'])
+    validate_claims(response.json(), values['issuer'], values['resource'], subject, ['autolog:read', 'autolog:write'],
+                    token=tokens['access_token'], access_token_format=args.access_token_format)
     print('PASS real login, code+PKCE exchange, separate-client introspection, issuer/audience/expiry/subject/scopes')
     for ident, method, params in [(1, 'initialize', {'protocolVersion': '2025-06-18', 'capabilities': {},
                                                     'clientInfo': {'name': 'autolog-acceptance', 'version': '1'}}),
@@ -135,7 +141,8 @@ def finish(args, client):
         response = client.post(doc['introspection_endpoint'], auth=(rs_id, rs_secret),
                                data={'token': refreshed.json()['access_token'], 'token_type_hint': 'access_token'})
         require(response.status_code == 200, 'Refreshed-token introspection failed')
-        validate_claims(response.json(), values['issuer'], values['resource'], subject, ['autolog:read', 'autolog:write'])
+        validate_claims(response.json(), values['issuer'], values['resource'], subject, ['autolog:read', 'autolog:write'],
+                        token=refreshed.json()['access_token'], access_token_format=args.access_token_format)
         print('PASS refresh and renewed claims')
     else:
         raise ValueError('No refresh token; fix offline_access policy')
@@ -154,6 +161,8 @@ def main():
     parser.add_argument('--client-id', default='autolog-chatgpt')
     parser.add_argument('--introspection-client-id', default='autolog-resource-server')
     parser.add_argument('--subject')
+    parser.add_argument('--access-token-format', choices=['rfc7662', 'authelia_opaque_v4'], default='rfc7662',
+                        help='Opt in only for the tested Authelia v4 opaque access token format.')
     args = parser.parse_args()
     if args.begin and not all([args.issuer, args.resource, args.redirect_uri]):
         parser.error('--begin requires --issuer, --resource, --redirect-uri')

@@ -24,6 +24,22 @@ def test_live_verifier_claim_contract():
     validate_claims(claims(), 'https://auth.homelab.test', 'https://mcp.homelab.test/mcp', 'owner-uuid', ['autolog:read'])
 
 
+def test_authelia_opaque_v4_verifier_token_type_does_not_accept_refresh():
+    data = claims()
+    data.pop('token_type')
+    data.pop('token_use')
+    args = ('https://auth.homelab.test', 'https://mcp.homelab.test/mcp', 'owner-uuid', ['autolog:read'])
+    with pytest.raises(ValueError):
+        validate_claims(data, *args, token='authelia_at_test')
+    validate_claims(data, *args, token='authelia_at_test', access_token_format='authelia_opaque_v4')
+    for invalid in ['authelia_rt_test', 'eyJ.test.jwt', 'other-opaque']:
+        with pytest.raises(ValueError):
+            validate_claims(data, *args, token=invalid, access_token_format='authelia_opaque_v4')
+    data['token_type'] = 'refresh_token'
+    with pytest.raises(ValueError):
+        validate_claims(data, *args, token='authelia_at_test', access_token_format='authelia_opaque_v4')
+
+
 @pytest.mark.parametrize('change', [{'active': False}, {'iss': 'https://evil.test'}, {'aud': ['other']},
     {'exp': True}, {'exp': 0}, {'exp': float('inf')}, {'sub': []}, {'sub': 'other'}, {'scope': ''},
     {'token_type': 'DPoP'}, {'token_type': None}, {'token_use': 'refresh_token'}])
@@ -54,7 +70,8 @@ def settings():
             'subject_scopes': {'owner-uuid': ['autolog:read', 'autolog:write']},
             'blog_public_base': 'https://autolog.homelab.test', 'image_public_base': 'https://img.homelab.test',
             'backend_image': 'ghcr.io/owner/backend@sha256:' + 'a' * 64,
-            'auth_image': 'ghcr.io/authelia/authelia@sha256:' + 'b' * 64}
+            'auth_image': 'ghcr.io/authelia/authelia@sha256:' + 'b' * 64,
+            'auth_storage_class': 'local-ssd'}
 
 
 def test_release_requires_reviewed_digests_and_owner_policy():
@@ -62,7 +79,9 @@ def test_release_requires_reviewed_digests_and_owner_policy():
     for change in [{'auth_image': 'ghcr.io/authelia/authelia:latest'}, {'subject_scopes': {}},
                    {'subject_scopes': {'owner': ['admin']}}, {'username': 'owner\nadmin'},
                    {'redirect_uri': 'https://*.example.com/callback'}, {'issuer': 'http://auth.homelab.test'},
-                   {'resource': 'https://mcp.homelab.test/other'}]:
+                   {'resource': 'https://mcp.homelab.test/other'},
+                   {'auth_storage_class': ''}, {'auth_storage_class': 'nfs-client'},
+                   {'auth_storage_class': 'REPLACE_WITH_STORAGE_CLASS'}]:
         with pytest.raises(ValueError):
             validate({**settings(), **change})
 

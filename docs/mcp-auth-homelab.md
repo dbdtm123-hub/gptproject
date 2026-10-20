@@ -79,7 +79,7 @@ flowchart LR
 
 Auth는 단일 replica, 메모리 세션, SQLite PVC를 사용한다. 새 DB 서버/VM/LDAP/Redis는 추가하지 않는다.
 이미 있는 PostgreSQL에 auth용 database/role을 추가하는 방안도 가능하지만, 불필요한 운영 DB 변경과 장애 결합을 피하려고 기본에서 제외했다.
-SQLite는 일관된 파일 잠금이 되는 기존 StorageClass의 RWO 블록/로컬 파일시스템을 쓴다. 공유 NFS에서 실행하거나 replica를 늘리지 않는다.
+SQLite는 일관된 파일 잠금이 되는 RWO 블록/로컬 파일시스템을 쓴다. 공유 NFS에서 실행하거나 replica를 늘리지 않는다. 운영에서 기본 StorageClass가 NFS라면 **PVC가 자동으로 NFS에 붙는 사고를 피해야 한다**. `k8s/auth/pvc.yaml`에는 의도적인 StorageClass placeholder가 있고, 릴리스 렌더러는 `auth_storage_class`를 명시적으로 요구하며 NFS로 명명된 클래스를 거부한다. 실제 프로비저너/볼륨 타입/locking 특성은 관리자 조회로 확인하고 선택한다.
 노드 고정 local PV라면 장애 시 auth도 중단되므로 복구 위치와 백업을 명시한다.
 
 Auth 재시작은 브라우저 로그인 세션을 잃을 수 있다. OAuth state/subject와 MFA 정보는 SQLite에 보존한다.
@@ -174,7 +174,7 @@ owner의 sub는 username이 아닌 IdP DB의 UUID다. 고정 버전의 `authelia
 
 ## Release 렌더링과 네트워크
 
-예제 JSON을 `.deploy`로 복사하고 실제 공개 주소·정확한 UI callback·검증한 owner sub·두 이미지 digest를 입력한다.
+예제 JSON을 `.deploy`로 복사하고 실제 공개 주소·정확한 UI callback·검증한 owner sub·두 이미지 digest, **운영에서 확인한 non-NFS `auth_storage_class`**를 입력한다.
 이미지는 검토한 CI 성공 SHA의 backend image와 고정 Authelia 버전의 registry digest다. 임의 digest를 만들어 넣지 않는다.
 backend는 새 MCP process에만 사용하고 기존 backend Deployment는 갱신하지 않는다.
 
@@ -222,6 +222,10 @@ X-Forwarded-For 조작으로 rate limit을 우회할 수 있으면 공개하지 
 기존 신뢰 프록시에서 안전하게 처리할 수 있는지 먼저 실증한다. 미지원이면 추가 프록시 설계를 검토하고 배포를 보류한다.
 [Authelia 공식 전달 헤더 지침](https://www.authelia.com/integration/proxies/forwarded-headers/)에 따라
 실제 public route에서 검증하며, Pod ingress 제한만으로 HTTP 헤더 정규화가 해결됐다고 간주하지 않는다.
+
+## 실제 브라우저 검증 스크립트와 Authelia 타입 모드
+
+`scripts/oauth/verify_connection.py --finish`에는 실제 Authelia 4.39.28 검사일 때만 `--access-token-format authelia_opaque_v4`를 지정한다. 기본값 `rfc7662`는 `token_type=Bearer`가 없는 경우 거부하므로 기본 설정을 완화하지 않는다. 검증 스크립트도 MCP처럼 `authelia_at_`만 허용하고 refresh token을 거부한다. 테스트 스크립트가 MFA 로그인·동의 완료의 대체 수단은 아니며, 사용자 본인의 실제 브라우저에서 수행해야 한다.
 
 ## 실제 브라우저 및 ChatGPT 완료 기준
 

@@ -34,6 +34,13 @@ def validate(settings):
         raise ValueError('Register the exact HTTPS ChatGPT redirect URI without wildcard')
     if not re.fullmatch(r'[a-zA-Z0-9_.-]+', settings['username']):
         raise ValueError('Unsafe username')
+    # SQLite requires a reviewed locking-safe local/block volume.
+    # Never silently select the cluster's default NFS StorageClass.
+    storage_class = settings.get('auth_storage_class')
+    if (not isinstance(storage_class, str) or not 1 <= len(storage_class) <= 253
+            or not re.fullmatch(r'[a-z0-9](?:[-a-z0-9.]*[a-z0-9])?', storage_class)
+            or 'nfs' in storage_class.lower()):
+        raise ValueError('Set a reviewed non-NFS local/block auth_storage_class explicitly')
     for name in ['backend_image', 'auth_image']:
         if not re.fullmatch(r'[a-zA-Z0-9./_-]+@sha256:[0-9a-f]{64}', settings[name]):
             raise ValueError('Reviewed registry image digest required: ' + name)
@@ -66,6 +73,11 @@ def render(settings, output):
                 config = config.replace('https://REPLACE-WITH-EXACT-CHATGPT-CALLBACK.invalid/callback', settings['redirect_uri'])
                 config = config.replace('subject: user:owner', 'subject: ' + json.dumps('user:' + settings['username']))
                 (work / 'configuration.yml').write_text(config)
+                pvc = {'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim',
+                       'metadata': {'name': 'autolog-auth-data'},
+                       'spec': {'storageClassName': settings['auth_storage_class']}}
+                (work / 'auth-pvc-patch.json').write_text(json.dumps(pvc))
+                k['patches'] = [{'path': 'auth-pvc-patch.json'}]
                 k['images'] = [{'name': 'ghcr.io/authelia/authelia', 'newName': settings['auth_image'].split('@')[0],
                                 'digest': settings['auth_image'].split('@')[1]}]
                 k['configMapGenerator'] = [{'name': 'autolog-auth-config', 'behavior': 'replace', 'files': ['configuration.yml']}]

@@ -3,6 +3,7 @@
   "resource": "https://mcp.example.com/mcp",
   "redirect_uri": "https://REPLACE-WITH-EXACT-CHATGPT-CALLBACK.invalid/callback",
   "username": "owner",
+  "auth_storage_class": "REPLACE_WITH_APPROVED_NON_NFS_BLOCK_OR_LOCAL_CLASS",
   "subject_scopes": {"REPLACE_WITH_VERIFIED_OWNER_SUB": ["autolog:read", "autolog:write"]},
   "blog_public_base": "https://autolog.myhomlab.win",
   "image_public_base": "https://img.myhomlab.win",
