@@ -51,6 +51,17 @@ ID token을 access token으로 사용하지 않는다. 사용자 OAuth token은 
 `SUBJECT_SCOPES`가 비어 있으면 기존 allowed-subject/token-scope 동작을 유지한다. 새 release renderer는 비어 있는 정책을 거부한다.
 정책이 설정됐는데 해당 sub 항목이 없으면 권한이 없다. 여러 사용자를 허용해도 모두 같은 개인 AutoLog backend를 향하므로 다중 tenant 구성은 아니다.
 
+## 실제 CI 확인: Authelia 4.39.28 Introspection 토큰 종류
+
+2026-10-20 GitHub Actions의 격리 Docker 실증 중 다음 차이를 확인했다. 이것은 실제 브라우저 MFA·ChatGPT 연결 검증이 아니라 **1-factor 테스트 사용자와 실물 provider를 사용한 CI 검사**다.
+
+- OAuth Code+PKCE S256·로그인·동의·Access/Refresh 발급·RFC 7662 Introspection은 작동했다.
+- Authelia 4.39.28은 **Access Token과 Refresh Token 둘 다** Introspection에서 `active=true`를 반환할 수 있고, `token_type` 및 `token_use` 필드는 모두 생략한다.
+- 실제 opaque access token은 `authelia_at_`, refresh token은 `authelia_rt_` 접두사가 붙는 것을 확인했다.
+- 잘못된 PKCE verifier와 authorization code replay는 거부된다. **Code replay 검사는 별도 code/token으로 실행**해야 한다. 같은 code로 토큰을 발급한 뒤 재사용하면 유효 토큰까지 폐기될 수 있다.
+
+**보안 조치:** RFC 7662의 `token_type` 필드는 선택 항목이나, 서버가 이 값을 생략한다고 해서 종류 검사를 제거하면 refresh token이 MCP에 들어올 수 있다. 일반 설정의 `AUTOLOG_MCP_ACCESS_TOKEN_FORMAT=rfc7662`는 계속 명시적 `token_type=Bearer` 및 유효한 `token_use`를 요구해 fail closed한다. 실제 Authelia 4.39.28 이미지로 테스트하는 별도 release만 `authelia_opaque_v4`를 설정한다. 이 모드는 **introspection의 active/iss/aud/exp/sub/scope 검증을 유지**한 상태에서, token_type/token_use가 없을 때에만 `authelia_at_` 접두사를 Access Token 종류 증명에 추가 사용하며 `authelia_rt_` 및 JWT를 거부한다. 접두사는 Authelia 특정 버전 구현 세부사항이므로 이미지 digest나 버전을 바꿀 때 실제 OAuth+MCP 통합 테스트 재검증이 필수다. 토큰 내용을 로그에 남기거나 prefix만으로 인증을 허용하지 않는다.
+
 ## 독립 배포 구조와 장애 범위
 
 ```mermaid

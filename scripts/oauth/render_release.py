@@ -75,6 +75,8 @@ def render(settings, output):
                 data = dict(AUTOLOG_MCP_RESOURCE=settings['resource'], AUTOLOG_MCP_ISSUER=settings['issuer'],
                             AUTOLOG_MCP_INTROSPECTION_URL=settings['issuer'] + '/api/oidc/introspection',
                             AUTOLOG_MCP_INTROSPECTION_CLIENT_ID='autolog-resource-server',
+                            # Opt in only for pinned, empirically tested Authelia v4 opaque tokens.
+                            AUTOLOG_MCP_ACCESS_TOKEN_FORMAT='authelia_opaque_v4',
                             AUTOLOG_MCP_ALLOWED_SUBJECTS=json.dumps(list(settings['subject_scopes'])),
                             AUTOLOG_MCP_SUBJECT_SCOPES=json.dumps(settings['subject_scopes']),
                             AUTOLOG_MCP_BLOG_PUBLIC_BASE=settings['blog_public_base'],

@@ -43,9 +43,20 @@ async def authenticate(request: Request) -> dict:
     header = request.headers.get("authorization", "")
     if not header.lower().startswith("bearer ") or not 1 <= len(header[7:]) <= 8192:
         raise HTTPException(401, "OAuth authentication required", headers={"WWW-Authenticate": challenge()})
-    claims = await introspect(header[7:])
+    token = header[7:]
+    claims = await introspect(token)
     settings = get_mcp_settings()
     valid = isinstance(claims, dict)
+    # RFC 7662 token_type is optional. The verified Authelia v4 opaque access
+    # token format uses authelia_at_ vs authelia_rt_ for refresh tokens. Do not
+    # accept the latter: Authelia's introspection returns active=True for both.
+    standard_access_type = (valid and isinstance(claims.get("token_type"), str)
+                            and claims["token_type"].lower() == "bearer"
+                            and claims.get("token_use", "access_token") == "access_token")
+    authelia_access_type = (valid and settings.access_token_format == "authelia_opaque_v4"
+                            and "token_type" not in claims and "token_use" not in claims
+                            and token.startswith("authelia_at_"))
+    token_kind_valid = standard_access_type or authelia_access_type
     audience = claims.get("aud", []) if valid else []
     if isinstance(audience, str):
         audience = [audience]
@@ -55,8 +66,7 @@ async def authenticate(request: Request) -> dict:
             or not isinstance(expiry, (int, float)) or isinstance(expiry, bool) or not time.time() < expiry < float("inf")
             or not isinstance(claims.get("sub"), str) or claims.get("sub") not in settings.allowed_subjects
             or not isinstance(claims.get("scope"), str)
-            or not isinstance(claims.get("token_type"), str) or claims["token_type"].lower() != "bearer"
-            or claims.get("token_use", "access_token") != "access_token"):
+            or not token_kind_valid):
         raise HTTPException(401, "Invalid OAuth access token", headers={"WWW-Authenticate": challenge()})
     if settings.subject_scopes:
         permitted = settings.subject_scopes.get(claims["sub"], [])

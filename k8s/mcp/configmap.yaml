@@ -7,6 +7,7 @@ data:
   AUTOLOG_MCP_ISSUER: https://identity.example.com
   AUTOLOG_MCP_INTROSPECTION_URL: https://identity.example.com/introspect
   AUTOLOG_MCP_INTROSPECTION_CLIENT_ID: autolog-resource-server
+  AUTOLOG_MCP_ACCESS_TOKEN_FORMAT: rfc7662
   AUTOLOG_MCP_ALLOWED_SUBJECTS: '[]'
   AUTOLOG_MCP_SUBJECT_SCOPES: '{}'
   AUTOLOG_MCP_ALLOWED_ORIGINS: '["https://chatgpt.com"]'

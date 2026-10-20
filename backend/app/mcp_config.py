@@ -1,5 +1,6 @@
 """Independent MCP process settings: no DB or S3 credentials required."""
 from functools import lru_cache
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import SecretStr, field_validator
@@ -13,6 +14,9 @@ class MCPSettings(BaseSettings):
     introspection_url: str = "https://identity.example.com/introspect"
     introspection_client_id: str = ""
     introspection_client_secret: SecretStr = SecretStr("")
+    # Strict default. Authelia v4's opaque tokens omit optional RFC 7662 token_type;
+    # opt-in mode additionally verifies the token is an Authelia access token.
+    access_token_format: Literal["rfc7662", "authelia_opaque_v4"] = "rfc7662"
     allowed_subjects: list[str] = []
     subject_scopes: dict[str, list[str]] = {}
     allowed_origins: list[str] = []

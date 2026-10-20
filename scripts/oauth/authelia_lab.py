@@ -203,6 +203,7 @@ def run_checks(directory, credentials):
         settings = MCPSettings(resource=RESOURCE, issuer=ISSUER, introspection_url=discovery['introspection_endpoint'],
                                introspection_client_id=auth[0], introspection_client_secret=auth[1],
                                allowed_subjects=[claims['sub']], subject_scopes={claims['sub']: ['autolog:read', 'autolog:write']},
+                               access_token_format='authelia_opaque_v4',
                                backend_token='lab-only-never-used')
         # Use real network introspection with certificate verification in the actual MCP app.
         real_client = httpx.AsyncClient
@@ -227,6 +228,10 @@ def run_checks(directory, credentials):
         check(initialize_result.status_code == 200, 'real token MCP initialize')
         listed = asyncio.run(call(tokens['access_token']))
         check(listed.status_code == 200 and len(listed.json()['result']['tools']) == 11, 'real token MCP tools/list 11')
+        settings.access_token_format = 'rfc7662'
+        check(asyncio.run(call(tokens['access_token'])).status_code == 401,
+              'default strict token format rejects optional claim omission')
+        settings.access_token_format = 'authelia_opaque_v4'
         settings.allowed_subjects = ['unrelated-user']
         check(asyncio.run(call(tokens['access_token'])).status_code == 401, 'MCP wrong subject denied')
         settings.allowed_subjects = [claims['sub']]

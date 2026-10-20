@@ -78,6 +78,32 @@ def test_oauth_rejects_bad_claims(environment, change):
     assert "resource_metadata=" in result.headers["www-authenticate"]
 
 
+def test_authelia_v4_token_format_opt_in_is_strict(environment, monkeypatch):
+    settings, claims = environment
+    claims.pop("token_type")
+    claims.pop("token_use")
+
+    async def provider(token):
+        return claims
+
+    monkeypatch.setattr(mcp_auth, "introspect", provider)
+    access = {"Authorization": "Bearer authelia_at_testopaque"}
+    refresh = {"Authorization": "Bearer authelia_rt_testopaque"}
+    # Without explicit opt-in, omission of the optional token_type fails closed.
+    assert send(rpc(), headers=access).status_code == 401
+    settings.access_token_format = "authelia_opaque_v4"
+    assert send(rpc(), headers=access).status_code == 200
+    for invalid in [refresh, {"Authorization": "Bearer eyJhbGciOiJub25lIn0.payload.signature"},
+                    {"Authorization": "Bearer otherwiseopaque"}]:
+        assert send(rpc(), headers=invalid).status_code == 401
+    # A contradictory explicit token kind must never be bypassed.
+    claims["token_type"] = "refresh_token"
+    assert send(rpc(), headers=access).status_code == 401
+    claims["token_type"] = "Bearer"
+    claims["token_use"] = "refresh_token"
+    assert send(rpc(), headers=access).status_code == 401
+
+
 def test_auth_missing_and_insufficient_scope(environment):
     assert send(rpc(), headers={"Authorization": ""}).status_code == 401
     environment[1]["scope"] = "autolog:read"
