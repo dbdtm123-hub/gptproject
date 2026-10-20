@@ -182,6 +182,14 @@ def run_checks(directory, credentials):
             print('LAB_INTROSPECTION_FIELDS ' + json.dumps(sorted(claims.keys())), flush=True)
             print('LAB_INTROSPECTION_CHECKS ' + json.dumps(claim_checks, sort_keys=True), flush=True)
         check(all(claim_checks.values()), 'strict MCP claims contract')
+        # Additional requirements enforced by MCP authenticate(), not only
+        # the legacy six-field compatibility contract.
+        print('LAB_ADDITIONAL_TOKEN_CHECKS ' + json.dumps({
+            'token_type_present': 'token_type' in claims,
+            'token_type_bearer': isinstance(claims.get('token_type'), str) and claims['token_type'].lower() == 'bearer',
+            'token_use_present': 'token_use' in claims,
+            'token_use_access': claims.get('token_use', 'access_token') == 'access_token',
+        }, sort_keys=True), flush=True)
         check(introspect('invalid-' + secrets.token_urlsafe(32)).json().get('active') is False, 'invalid token inactive')
         check(browser.post(discovery['introspection_endpoint'], auth=(auth[0], 'incorrect'),
                            data={'token': tokens['access_token']}).status_code in [400, 401], 'incorrect introspection credential denied')
