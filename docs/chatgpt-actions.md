@@ -104,3 +104,8 @@ curl --fail "$AUTOLOG_URL/openapi-action.json" --output /tmp/autolog-action-sche
 토큰 교체 시 backend Deployment를 재시작하고 Action의 인증 값도 바꾼다. 교체 중 외부 쓰기는 잠시 멈춘다.
 Secret 값이나 실제 토큰 파일 내용을 출력하지 않고 안전한 비밀 저장소에 보관한다.
 OpenAI Secret은 Article 기능에 필요하지 않으며 ENABLE_OPENAI_CLASSIFICATION=false를 유지해도 된다.
+
+## ChatGPT 생성 이미지
+
+현재 연결 앱의 파일 입력 제약, 기존 CMS를 통한 이미지 Markdown 전달 방법,
+별도 Sites 앱 구현 인계는 [이미지 전송 문서](chatgpt-image-handoff.md)를 따른다.

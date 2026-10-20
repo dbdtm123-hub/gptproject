@@ -1,0 +1,41 @@
+{
+  "name": "upload_image",
+  "title": "Upload an image to AutoLog",
+  "description": "Upload an explicitly selected PNG, JPEG, WebP or GIF image (max 10 MiB) to the connected AutoLog account and return its URL and Markdown. Provide a meaningful alt description. This tool does not save or publish an article. Reuse a successful result; do not automatically retry an uncertain upload.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "image": {
+        "type": "object",
+        "properties": {
+          "download_url": { "type": "string" },
+          "file_id": { "type": "string" },
+          "mime_type": { "type": "string" },
+          "file_name": { "type": "string" }
+        },
+        "required": ["download_url", "file_id"],
+        "additionalProperties": false
+      },
+      "alt": { "type": "string", "minLength": 1, "maxLength": 200 }
+    },
+    "required": ["image", "alt"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "url": { "type": "string" },
+      "key": { "type": "string" },
+      "markdown": { "type": "string" }
+    },
+    "required": ["url", "key", "markdown"],
+    "additionalProperties": false
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "_meta": { "openai/fileParams": ["image"] }
+}

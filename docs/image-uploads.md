@@ -149,13 +149,13 @@ kubectl -n lifelog describe deployment lifelog-backend
 kubectl -n lifelog get networkpolicy
 ```
 
-브라우저 자동화 검증도 저장소에 포함했다. 별도 Python 테스트 환경에 Playwright, Pillow, python-dotenv와 Chromium을 설치한 뒤 실행한다.
-테스트는 기존 개발 DB를 읽기만 하고 임시 backend/frontend 프로세스와 mock storage를 사용한다. 8101/3101 포트가 비어 있어야 한다.
+브라우저 자동화 검증도 저장소에 포함했다. 별도 Python 테스트 환경에 Playwright, Pillow와 Chromium을 설치한 뒤 실행한다.
+테스트는 이름이 _test로 끝나는 전용 테스트 DB를 읽기만 하고 임시 backend/frontend 프로세스와 mock storage를 사용한다. 8101/3101 포트가 비어 있어야 한다.
 기본 브라우저 경로는 /usr/bin/chromium이며 backend/.venv와 frontend production build가 준비돼 있어야 한다.
 
 ```bash
 # 저장소 루트, 위 도구가 설치된 Python으로 실행
-python scripts/check-image-upload-ui.py
+TEST_DATABASE_URL="$YOUR_LOCAL_TEST_DATABASE_URL" backend/.venv/bin/python scripts/check-image-upload-ui.py
 ```
 
 ## 이전 통신 정책 정리

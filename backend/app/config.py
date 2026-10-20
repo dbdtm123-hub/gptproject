@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     api_token: SecretStr | None = Field(default=None, min_length=32)
     action_server_url: str = "https://autolog.example.com"
     enable_openai_classification: bool = False
+    mcp_private_reads_enabled: bool = False
     openai_api_key: SecretStr | None = None
     s3_endpoint: str = "http://garage.lifelog.svc.cluster.local:3900"
     s3_access_key: SecretStr | None = None

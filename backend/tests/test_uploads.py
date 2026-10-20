@@ -22,7 +22,7 @@ def image_bytes(format='PNG'):
 @pytest.fixture
 def upload_storage(monkeypatch):
     client=Mock()
-    settings=SimpleNamespace(s3_public_base_url='https://img.myhomlab.win',s3_bucket='autolog-public')
+    settings=SimpleNamespace(s3_public_base_url='https://images.example.com',s3_bucket='autolog-public')
     monkeypatch.setattr(storage,'get_settings',lambda:settings)
     monkeypatch.setattr(storage,'s3_client',lambda:client)
     yield client
@@ -47,7 +47,7 @@ def test_token_upload_safe_key_and_public_url(client,upload_storage,format,mime,
     result=response.json();key=result['key']
     assert re.fullmatch(r'uploads/\d{4}/\d{2}/[0-9a-f]{32}\.'+extension,key)
     assert UUID(key.split('/')[-1].split('.')[0]).version == 4
-    assert result['url']=='https://img.myhomlab.win/'+key and 'svc.cluster.local' not in result['url']
+    assert result['url']=='https://images.example.com/'+key and 'svc.cluster.local' not in result['url']
     args=upload_storage.put_object.call_args.kwargs
     assert args['Key']==key and args['Bucket']=='autolog-public' and args['ContentType']==mime
     assert 'ACL' not in args
@@ -111,3 +111,41 @@ def test_sdk_adapter_uses_internal_endpoint_and_path_style(monkeypatch):
     from fastapi import HTTPException
     with pytest.raises(HTTPException) as error:storage.s3_client()
     assert error.value.status_code==503
+
+
+def test_exact_ten_mib_file_is_accepted(client, upload_storage):
+    # Pillow accepts trailing bytes; the file limit must include them, not just pixels.
+    data = image_bytes()
+    data += b'\0' * (uploads.MAX_IMAGE_BYTES - len(data))
+    response = client.post('/api/uploads', files={'file': ('limit.png', data, 'image/png')})
+    assert response.status_code == 201
+    assert upload_storage.put_object.call_args.kwargs['Body'] == data
+
+
+@pytest.mark.parametrize('source', ['https://example.com/image.png', 'sandbox:/image.png', 'file:///image.png'])
+def test_text_sources_are_not_uploads(client, upload_storage, source):
+    assert client.post('/api/uploads', json={'url': source}).status_code == 422
+    upload_storage.put_object.assert_not_called()
+
+
+@pytest.mark.parametrize('format,mime', [('PNG', 'image/png'), ('JPEG', 'image/jpeg'), ('WEBP', 'image/webp')])
+def test_multipart_to_article_markdown_roundtrip(client, upload_storage, format, mime):
+    data = image_bytes(format)
+    uploaded = client.post('/api/uploads', files={'file': ('selected', data, mime)})
+    assert uploaded.status_code == 201
+    result = uploaded.json()
+    assert upload_storage.put_object.call_args.kwargs['Body'] == data
+    markdown = f"![구성도]({result['url']})"
+    created = client.post('/api/articles', json={
+        'title': '이미지 전송 검증', 'category': '기술', 'summary': '로컬 테스트',
+        'content_markdown': markdown, 'status': 'draft',
+    })
+    assert created.status_code == 201
+    saved = created.json()
+    path = '/api/articles/' + saved['id']
+    assert client.get(path).json()['content_markdown'] == markdown
+    updated = client.patch(path, json={'content_markdown': markdown + '\n추가 설명',
+                                      'expected_updated_at': saved['updated_at']})
+    assert updated.status_code == 200
+    assert updated.json()['content_markdown'] == markdown + '\n추가 설명'
+    assert client.delete(path).status_code == 204

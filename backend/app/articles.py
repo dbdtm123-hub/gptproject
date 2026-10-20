@@ -132,8 +132,12 @@ def list_articles(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ArticlePage:
+    return query_articles(session, is_admin(request), q, slug, category_id, tag, status, limit, offset)
+
+
+def query_articles(session, private, q=None, slug=None, category_id=None, tag=None, status=None, limit=20, offset=0):
     filters = []
-    if not is_admin(request):
+    if not private:
         if status == "draft":
             raise HTTPException(401, "Admin login required for drafts")
         filters.append(Article.status == "published")
@@ -157,8 +161,11 @@ def list_articles(
 
 @router.get("/articles/{article_id}", response_model=ArticleRead, operation_id="getArticle")
 def get_article(article_id: UUID, session: DB, request: Request, status: Status | None = None) -> ArticleRead:
+    return read_article(session, article_id, is_admin(request), status)
+
+
+def read_article(session, article_id, admin, status=None):
     article = find_article(session, article_id)
-    admin = is_admin(request)
     if not admin and article.status != "published":
         raise HTTPException(401, "Admin login required for drafts")
     if status is not None and article.status != status:

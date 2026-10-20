@@ -94,3 +94,23 @@ def test_login_rate_limit(client):
         assert response.status_code==429 and response.headers['retry-after']=='60'
     finally:
         login_failures.clear()
+
+
+def test_opt_in_integration_reads_do_not_change_public_read_policy(client, monkeypatch):
+    from app.config import get_settings
+    settings = get_settings()
+    draft = client.post('/api/articles', json=data('mcp-private', source_reference='private-reference')).json()
+    path = '/api/integrations/articles/' + draft['id']
+    assert client.get(path).status_code == 503
+    monkeypatch.setattr(settings, 'mcp_private_reads_enabled', True)
+    with TestClient(app) as integration:
+        assert integration.get(path).status_code == 401
+        integration.headers['Authorization'] = 'Bearer invalid'
+        assert integration.get(path).status_code == 401
+        integration.headers['Authorization'] = 'Bearer ' + os.environ['API_TOKEN']
+        response = integration.get(path)
+        assert response.status_code == 200
+        assert response.json()['source_reference'] == 'private-reference'
+        assert integration.get('/api/integrations/articles', params={'status': 'draft'}).json()['total'] == 1
+        assert integration.get('/api/articles/' + draft['id']).status_code == 401
+        assert integration.get('/api/articles').json()['total'] == 0

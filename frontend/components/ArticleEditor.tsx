@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, Article, ArticlePage, Category } from "../lib/api";
 import Markdown from "./Markdown";
+import { ImageUploadCache, imageMarkdown, UploadedImage } from "../lib/image-upload";
 
 type Draft = { title: string; slug: string; category: string; subcategory: string; summary: string; content_markdown: string;
   tags: string; source_type: string; source_reference: string; status: "draft" | "published"; related_articles: string[] };
@@ -18,29 +19,41 @@ export default function ArticleEditor({ id }: { id?: string }) {
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const [preview, setPreview] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const cursor = useRef({ start: 0, end: 0 });
+  const uploadCache = useRef(new ImageUploadCache());
   const [uploading, setUploading] = useState(false); const [alt, setAlt] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [uploadedMarkdown, setUploadedMarkdown] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
+  async function copyImageMarkdown() {
+    try {
+      await navigator.clipboard.writeText(uploadedMarkdown);
+      setCopyStatus("Markdown을 복사했습니다. ChatGPT 대화에 붙여 넣어 주세요.");
+    } catch { setCopyStatus("복사할 수 없습니다. 아래 Markdown을 직접 선택해 복사해 주세요."); }
+  }
   function rememberCursor() {
     if (textarea.current) cursor.current = { start: textarea.current.selectionStart, end: textarea.current.selectionEnd };
   }
   async function upload(file: File | undefined) {
-    if (!file) return;
-    setUploadError("");
+    if (!file || uploading || busy) return;
+    setUploadError(""); setCopyStatus("");
+    if (!alt.trim()) { setUploadError("이미지 설명을 입력해 주세요."); return; }
     if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) { setUploadError("JPEG, PNG, WebP, GIF 이미지만 업로드할 수 있습니다."); return; }
     if (file.size > 10 * 1024 * 1024) { setUploadError("이미지는 10 MiB 이하여야 합니다."); return; }
     const position = { ...cursor.current };
-    const description = (alt.trim() || "이미지 설명").replace(/[\r\n]+/g, " ").replace(/[\\\[\]]/g, "\\$&");
-    const form = new FormData(); form.append("file", file);
+    const description = alt;
     setUploading(true);
     try {
-      const result = await api<{ url: string; key: string }>("uploads", { method: "POST", body: form });
-      const url = new URL(result.url);
-      if (url.protocol !== "https:") throw new Error("이미지 URL을 확인해 주세요.");
-      const markdown = `\n![${description}](${url.href.replace(/\(/g, "%28").replace(/\)/g, "%29")})\n`;
+      const result = await uploadCache.current.upload(file, selected => {
+        const form = new FormData(); form.append("file", selected);
+        return api<UploadedImage>("uploads", { method: "POST", body: form });
+      });
+      const markdown = `\n${imageMarkdown(description, result)}\n`;
+      setUploadedMarkdown(markdown.trim());
       let nextCursor = 0;
       setDraft(previous => {
         const start = Math.min(position.start, previous.content_markdown.length);
-        const end = Math.min(Math.max(position.end, start), previous.content_markdown.length);
+        // Inserting an image must not delete selected article text.
+        const end = start;
         nextCursor = start + markdown.length;
         return { ...previous, content_markdown: previous.content_markdown.slice(0, start) + markdown + previous.content_markdown.slice(end) };
       });
@@ -95,6 +108,13 @@ export default function ArticleEditor({ id }: { id?: string }) {
           <label>이미지 설명<input maxLength={200} value={alt} disabled={uploading} onChange={e => setAlt(e.target.value)} placeholder="예: OpenStack 구성도" /></label>
           <label className="upload-choice">{uploading ? "이미지 업로드 중…" : "이미지 업로드"}<input aria-label="이미지 업로드" type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={uploading || busy} onChange={e => { void upload(e.target.files?.[0]); e.target.value = ""; }} /></label>
           <small>최대 10 MiB · 업로드한 이미지는 URL을 아는 누구나 볼 수 있습니다.</small>
+          <small>ChatGPT에서 만든 이미지는 내려받은 뒤 여기서 선택하세요. 업로드 후 Markdown을 복사해 대화에 전달할 수 있습니다. 글 저장 없이도 이미지가 업로드됩니다.</small>
+          {uploadedMarkdown && <div>
+            <label htmlFor="uploaded-image-markdown">최근 업로드 이미지 Markdown</label>
+            <textarea id="uploaded-image-markdown" readOnly value={uploadedMarkdown} onFocus={e => e.currentTarget.select()} />
+            <button type="button" className="secondary" onClick={() => void copyImageMarkdown()}>이미지 Markdown 복사</button>
+            {copyStatus && <p role="status">{copyStatus}</p>}
+          </div>}
           {uploadError && <p className="notice" role="alert">{uploadError}</p>}
           {uploading && <p role="status">이미지를 저장하고 있습니다.</p>}
         </div>

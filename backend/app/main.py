@@ -10,6 +10,7 @@ from app.auth import router as auth_router, session_key
 from app.config import get_settings
 from app.database import get_session
 from app.uploads import router as upload_router, UploadGuard
+from app.mcp_read_api import router as mcp_read_router
 
 app = FastAPI(title="AutoLog Technical Blog API", version="0.3.0")
 app.add_middleware(
@@ -23,6 +24,7 @@ app.include_router(router)
 app.include_router(article_router)
 app.include_router(auth_router)
 app.include_router(upload_router)
+app.include_router(mcp_read_router)
 app.add_middleware(UploadGuard)
 
 

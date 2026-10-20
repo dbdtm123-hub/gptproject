@@ -1,5 +1,7 @@
 # AutoLog — 대화에서 만드는 개인 기술 블로그 / 지식 베이스
 
+자체 호스팅 MCP 개발·인증·Kubernetes 전환: [통합 안내](docs/mcp-self-hosting.md). 기존 Sites는 새 연결 검증 전까지 유지합니다.
+
 평소 ChatGPT와 나눈 작업·장애 해결·학습 대화를 완성된 Markdown 기술 글로 저장하고 읽는다.
 핵심 데이터는 Article.content_markdown이다. 백엔드는 글을 검증·저장하며 OpenAI를 다시 호출하지 않는다.
 

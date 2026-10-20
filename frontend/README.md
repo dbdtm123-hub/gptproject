@@ -15,4 +15,6 @@ react-markdown/remark-gfm은 raw HTML을 실행하지 않고 Markdown·GFM 표·
 
 개발: .env.example을 .env.local로 복사해 서버 변수들을 채우고 npm ci / npm run dev.
 검증: npm run typecheck / npm run build. production 이미지 UID 10001와 비루트 실행을 유지한다.
+자식 프로세스 pipe/IPC가 제한된 환경에서는 `AUTOLOG_BUILD_WORKER_THREADS=1 npm run build`로
+타입 검사를 유지한 thread 모드를 사용한다. [원인과 검증 결과](../docs/issue-2-followup.md)를 참고한다.
 운영 Podman/containerd/Kubernetes와 API 제출 acceptance 예제는 루트 README를 따른다.

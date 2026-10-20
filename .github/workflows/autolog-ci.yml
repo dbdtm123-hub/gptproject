@@ -84,7 +84,7 @@ jobs:
       - name: TypeScript
         run: npm run typecheck
       - name: Upload proxy regression tests
-        run: node --test tests/upload-proxy.test.cjs
+        run: node --test tests/upload-proxy.test.cjs tests/image-upload.test.cjs
       - name: Production build
         run: npm run build
 
@@ -104,7 +104,7 @@ jobs:
       - name: Validate checked-in Kustomize bases
         run: |
           set -euo pipefail
-          for path in k8s/platform k8s/database k8s/migration k8s/backend k8s/frontend k8s/networking k8s/ingress k8s/image-gateway; do
+          for path in k8s/platform k8s/database k8s/migration k8s/backend k8s/frontend k8s/networking k8s/ingress k8s/image-gateway k8s/mcp; do
             kubectl kustomize "$path" > /dev/null
           done
       - name: Render application release without cluster access

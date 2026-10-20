@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autolog-mcp-config
+data:
+  AUTOLOG_MCP_RESOURCE: https://mcp.example.com/mcp
+  AUTOLOG_MCP_ISSUER: https://identity.example.com
+  AUTOLOG_MCP_INTROSPECTION_URL: https://identity.example.com/introspect
+  AUTOLOG_MCP_INTROSPECTION_CLIENT_ID: autolog-resource-server
+  AUTOLOG_MCP_ALLOWED_SUBJECTS: '[]'
+  AUTOLOG_MCP_ALLOWED_ORIGINS: '["https://chatgpt.com"]'
+  AUTOLOG_MCP_BACKEND_URL: http://lifelog-backend:8000
+  AUTOLOG_MCP_IMAGE_PUBLIC_BASE: https://img.example.com
+  AUTOLOG_MCP_BLOG_PUBLIC_BASE: https://autolog.example.com
+  AUTOLOG_MCP_FILE_SOURCES: '{}'
+  AUTOLOG_MCP_PRIVATE_READS: 'false'

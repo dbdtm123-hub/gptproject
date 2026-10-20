@@ -1,0 +1,10 @@
+# Fragment for the EXISTING tunnel, before its final catch-all.
+# Use the reviewed hostname matching AUTOLOG_MCP_RESOURCE. Preserve Sites routes.
+- hostname: mcp.example.com
+  path: ^/mcp$
+  service: http://autolog-mcp.lifelog.svc.cluster.local:8080
+- hostname: mcp.example.com
+  path: ^/\.well-known/oauth-protected-resource(/mcp)?$
+  service: http://autolog-mcp.lifelog.svc.cluster.local:8080
+- hostname: mcp.example.com
+  service: http_status:404
