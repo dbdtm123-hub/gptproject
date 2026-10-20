@@ -144,7 +144,14 @@ def run_checks(directory, credentials):
         check(issued.status_code == 200, 'code + S256 token exchange')
         tokens = issued.json()
         check(tokens.get('token_type', '').lower() == 'bearer' and bool(tokens.get('refresh_token')), 'bearer and refresh issued')
-        check(browser.post(discovery['token_endpoint'], auth=client_auth, data=token_args).status_code == 400, 'code replay denied')
+        # Authorization code reuse can revoke tokens from the *same* code
+        # (RFC 6749 4.1.2). Never replay the code used by the main test token.
+        replay_code, replay_verifier = authorize(browser, discovery)
+        replay_args = {**token_args, 'code': replay_code, 'code_verifier': replay_verifier}
+        check(browser.post(discovery['token_endpoint'], auth=client_auth, data=replay_args).status_code == 200,
+              'isolated replay test token issued')
+        check(browser.post(discovery['token_endpoint'], auth=client_auth, data=replay_args).status_code == 400,
+              'code replay denied')
         auth = ('autolog-resource-server', credentials['introspection'])
         introspect = lambda token: browser.post(discovery['introspection_endpoint'], auth=auth,
                                                 data={'token': token, 'token_type_hint': 'access_token'})
