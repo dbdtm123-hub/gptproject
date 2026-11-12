@@ -47,6 +47,8 @@ jobs:
       - name: Run backend tests
         working-directory: backend
         run: python -m pytest -q
+      - name: OAuth regression tests
+        run: python -m pytest ../tests/oauth -q
 
   image-gateway:
     name: Image gateway unit tests (Python 3.12)
@@ -120,7 +122,7 @@ jobs:
     name: Publish ${{ matrix.component }} SHA image
     # Images are published only after all checks pass on the trusted work branch.
     needs: [backend, image-gateway, frontend, manifests]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/work'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/work') || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/operations-reports-'))
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -128,7 +130,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        component: [backend, frontend, image-gateway]
+        component: ${{ fromJSON(github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release/operations-reports-') && '["backend","frontend"]' || '["backend","frontend","image-gateway"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3

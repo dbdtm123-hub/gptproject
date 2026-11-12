@@ -84,8 +84,8 @@ def unresolved_issues(session: DB, actor: Reader, search: Annotated[ReportSearch
 @router.get("/projects")
 def projects(session: DB, actor: Reader):
     # Bounded by pagination; options are a compact index, never raw Markdown.
-    return {"projects": list(session.scalars(select(OperationReport.project).distinct().order_by(OperationReport.project)).all()),
-            "components": list(session.scalars(select(OperationReport.component).distinct().order_by(OperationReport.component)).all())}
+    return {"projects": list(session.scalars(select(OperationReport.project.collate("C")).distinct().order_by(OperationReport.project.collate("C"))).all()),
+            "components": list(session.scalars(select(OperationReport.component.collate("C")).distinct().order_by(OperationReport.component.collate("C"))).all())}
 
 
 @router.get("/latest", response_model=ReportRead)
