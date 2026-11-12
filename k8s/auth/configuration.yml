@@ -65,6 +65,8 @@ identity_providers:
     scopes:
       'autolog:read': {}
       'autolog:write': {}
+      'autolog:reports:read': {}
+      'autolog:reports:write': {}
     clients:
       - client_id: autolog-chatgpt
         client_name: AutoLog ChatGPT
@@ -78,7 +80,7 @@ identity_providers:
         audience:
           - https://mcp.example.com/mcp
         requested_audience_mode: explicit
-        scopes: [openid, offline_access, 'autolog:read', 'autolog:write']
+        scopes: [openid, offline_access, 'autolog:read', 'autolog:write', 'autolog:reports:read', 'autolog:reports:write']
         grant_types: [authorization_code, refresh_token]
         response_types: [code]
         response_modes: [query]

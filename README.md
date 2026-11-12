@@ -476,3 +476,9 @@ push와 원격 rollout은 수행하지 않았다. OpenAI 호출 테스트는 moc
 [Garage read-only image gateway 배포 절차](docs/image-gateway.md): 기존 업로드 RW key와 별도의 reader Secret을 사용한다.
 img.myhomlab.win → image-gateway → Garage 서명 GET/HEAD이며 bucket Website=false를 유지한다.
 기존 autolog hostname/Article/DB/업로드 경로는 유지하며 bucket policy API를 사용하지 않는다.
+
+
+## 비공개 운영 리포트
+
+운영 실행 기록은 공개 글과 별도인 **운영 리포트** 메뉴에서 관리한다.
+Reports API·MCP 범위·개발 검증·승인 후 migration/배포/rollback 절차는 [Reports 안내](docs/reports.md)를 따른다.

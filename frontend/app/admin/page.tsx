@@ -26,7 +26,7 @@ export default function Admin() {
     catch (e) { setError((e as Error).message); }
   }
   return <main className="admin"><header className="blog-header"><div><Link href="/">← 공개 블로그</Link><h1>글 관리</h1></div>
-    <div className="actions"><Link className="button" href="/admin/articles/new">글 작성</Link><button className="secondary" onClick={logout}>로그아웃</button></div></header>
+    <div className="actions"><Link href="/reports">운영 리포트</Link><Link className="button" href="/admin/articles/new">글 작성</Link><button className="secondary" onClick={logout}>로그아웃</button></div></header>
     <label>글 상태<select aria-label="관리자 상태 필터" value={status} onChange={e => { setStatus(e.target.value); setPage(0); }}><option value="">전체</option><option value="draft">임시저장</option><option value="published">발행됨</option></select></label>
     {error && <p className="notice" role="alert">{error}</p>}
     <h2>총 {data.total}개</h2>

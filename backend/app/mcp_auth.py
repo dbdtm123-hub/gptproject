@@ -8,6 +8,8 @@ from app.mcp_config import get_mcp_settings
 
 READ = "autolog:read"
 WRITE = "autolog:write"
+REPORT_READ = "autolog:reports:read"
+REPORT_WRITE = "autolog:reports:write"
 
 
 def challenge(error="invalid_token", scope=READ):

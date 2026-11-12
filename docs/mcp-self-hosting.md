@@ -113,3 +113,6 @@ CI는 임시 PostgreSQL backend 전체, gateway 전체, frontend tests/build 및
 ## 홈랩 인증 서버 구축
 
 IdP가 없는 환경의 후보 비교·독립 배포·실제 OAuth 검증·운영 복구는 [홈랩 인증 서버 배포 준비](mcp-auth-homelab.md)를 따른다. Authelia는 실증 전 후보이며 ChatGPT 연결 성공으로 간주하지 않는다. MCP는 introspection의 bearer access-token 종류도 검증하고 선택적 `AUTOLOG_MCP_SUBJECT_SCOPES`로 사용자별 scope 상한을 적용한다. 기존 Sites와 운영 서비스/Secret은 유지한다.
+
+
+운영 리포트 도구와 report 전용 권한/승인 후 배포 절차는 [Reports 안내](reports.md)를 참고한다. 기존 article scope는 report 접근을 부여하지 않는다.

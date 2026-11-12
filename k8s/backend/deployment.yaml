@@ -71,6 +71,18 @@ spec:
                 secretKeyRef:
                   name: lifelog-api
                   key: API_TOKEN
+            - name: REPORT_READ_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: lifelog-reports
+                  key: READ_TOKEN
+                  optional: true
+            - name: REPORT_WRITE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: lifelog-reports
+                  key: WRITE_TOKEN
+                  optional: true
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

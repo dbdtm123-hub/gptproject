@@ -10,6 +10,8 @@ from app.auth import router as auth_router, session_key
 from app.config import get_settings
 from app.database import get_session
 from app.uploads import router as upload_router, UploadGuard
+from app.reports import router as report_router
+from app.report_auth import ReportPrivacyMiddleware
 from app.mcp_read_api import router as mcp_read_router
 
 app = FastAPI(title="AutoLog Technical Blog API", version="0.3.0")
@@ -25,6 +27,10 @@ app.include_router(article_router)
 app.include_router(auth_router)
 app.include_router(upload_router)
 app.include_router(mcp_read_router)
+app.include_router(report_router)
+
+
+app.add_middleware(ReportPrivacyMiddleware)
 app.add_middleware(UploadGuard)
 
 
@@ -36,6 +42,8 @@ def action_schema() -> dict:
     schema["servers"] = [{"url": get_settings().action_server_url.rstrip("/")}]
     schema["paths"] = {path: item for path, item in schema["paths"].items()
                        if path.startswith("/api/articles") or path in {"/api/categories", "/api/tags"}}
+    schema["components"]["schemas"] = {name: definition for name, definition in schema["components"]["schemas"].items()
+                                         if not name.startswith("Report")}
     return schema
 
 
@@ -54,6 +62,7 @@ def ready(session: Session = Depends(get_session)) -> dict[str, str]:
         session.execute(text("SELECT id FROM entries LIMIT 1"))
         session.execute(text("SELECT id FROM categories LIMIT 1"))
         session.execute(text("SELECT id FROM articles LIMIT 1"))
+        session.execute(text("SELECT report_id FROM operation_reports LIMIT 1"))
     except SQLAlchemyError:
         raise HTTPException(status_code=503, detail="Database not ready") from None
     return {"status": "ready"}

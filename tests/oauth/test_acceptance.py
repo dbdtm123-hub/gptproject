@@ -75,3 +75,14 @@ def test_no_insecure_endpoints(url):
 
 def test_redirect_trailing_slash_is_preserved():
     assert https_url("https://client.homelab.test/callback/") == "https://client.homelab.test/callback/"
+
+
+def test_report_scopes_are_explicit_and_do_not_expand_article_scope():
+    candidate = settings()
+    candidate['subject_scopes'] = {'owner-uuid': ['autolog:reports:read', 'autolog:reports:write']}
+    assert validate(candidate) == ('auth.homelab.test', 'mcp.homelab.test')
+    validate_claims({**claims(), 'scope': 'autolog:reports:read'}, candidate['issuer'], candidate['resource'],
+                    'owner-uuid', ['autolog:reports:read'])
+    with pytest.raises(ValueError):
+        validate_claims({**claims(), 'scope': 'autolog:read autolog:write'}, candidate['issuer'], candidate['resource'],
+                        'owner-uuid', ['autolog:reports:read'])

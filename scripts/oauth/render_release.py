@@ -38,7 +38,7 @@ def validate(settings):
         if not re.fullmatch(r'[a-zA-Z0-9./_-]+@sha256:[0-9a-f]{64}', settings[name]):
             raise ValueError('Reviewed registry image digest required: ' + name)
     if not settings['subject_scopes'] or any(not isinstance(k, str) or not k or not isinstance(v, list)
-            or not v or not set(v) <= {'autolog:read', 'autolog:write'} for k, v in settings['subject_scopes'].items()):
+            or not v or not set(v) <= {'autolog:read', 'autolog:write', 'autolog:reports:read', 'autolog:reports:write'} for k, v in settings['subject_scopes'].items()):
         raise ValueError('Explicit nonempty subject -> scope list required')
     if any('example.com' in str(v) or 'REPLACE' in str(v) or '.invalid' in str(v) for v in settings.values()):
         raise ValueError('Unresolved example value')

@@ -26,3 +26,5 @@ OpenAI Secret은 backend에만 주입한다. 미설정 시 수동 기록만 가�
 단일 PostgreSQL은 HA가 아니며 영속 데이터 백업과 별도 복원 검증이 필요하다.
 
 독립 MCP 및 인증 서버는 `k8s/mcp`, `k8s/auth`를 사용하며 기존 앱 일괄 배포에 포함하지 않는다. [OAuth 홈랩 운영 문서](../docs/mcp-auth-homelab.md)에 따라 후보 검증과 별도 승인을 거친다. 예제 base를 운영에 바로 apply하지 않는다.
+
+운영 리포트는 additive migration 0003이 먼저 필요하다. [Reports 배포·rollback](../docs/reports.md)을 따른다. `lifelog-reports` Secret의 READ_TOKEN/WRITE_TOKEN은 선택 사항이며 서로 다른 32자 이상 값으로 별도 secret 관리 절차에서 생성한다. 실제 배포는 승인 전 실행하지 않는다.

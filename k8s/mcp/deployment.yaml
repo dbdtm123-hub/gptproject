@@ -45,6 +45,12 @@ spec:
                 secretKeyRef:
                   name: lifelog-api
                   key: API_TOKEN
+            - name: AUTOLOG_MCP_REPORT_BACKEND_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: lifelog-reports
+                  key: WRITE_TOKEN
+                  optional: true
             - name: AUTOLOG_MCP_INTROSPECTION_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:

@@ -84,7 +84,7 @@ jobs:
       - name: TypeScript
         run: npm run typecheck
       - name: Upload proxy regression tests
-        run: node --test tests/upload-proxy.test.cjs tests/image-upload.test.cjs
+        run: node --test tests/*.test.cjs
       - name: Production build
         run: npm run build
 

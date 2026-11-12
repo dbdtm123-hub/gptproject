@@ -101,3 +101,14 @@ upload_image가 성공한 경우만 반환 URL을 Markdown에 넣는다. 같은 
 기존 공개 API의 Bearer 읽기는 published 전용이고, 명시적으로 활성화한 private integration 경로만 draft를 읽는다.
 draft를 읽지 못하면 기존 본문을 보지 않고 덮어쓰지 않는다. article_url은 published면 공개 링크,
 draft면 관리자 로그인이 필요한 편집 링크다. draft를 발행 완료라고 표현하지 않는다.
+
+
+## 운영 리포트
+
+운영 실행 기록은 공개 기술 글과 분리된 create_report/get_report/search_reports 도구를 사용한다.
+report_id는 OPENSTACK-RABBITMQ-0020처럼 실행별로 고정하고, 같은 ID를 새 실행에 재사용하지 않는다.
+실행한 변경은 changes, 제안만 한 변경은 next_actions, 확인한 사실은 findings에 기록한다.
+측정값에는 단위와 실제 수집 시각/구간을 넣고 미수집 값은 null로 남긴다.
+기존 리포트 수정 전 get_report로 revision을 읽어 expected_revision으로 전달한다.
+충돌을 자동 재시도하거나 보고서를 공개하기 위해 기존 draft를 발행하지 않는다.
+API가 제공하는 관련 리포트와 최신 project/component의 미해결 문제를 다음 실행의 근거로 사용한다.

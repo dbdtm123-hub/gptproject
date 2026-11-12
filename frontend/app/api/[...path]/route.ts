@@ -40,11 +40,12 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
     const { path } = await context.params;
     route = path.join("/");
     const articleRoute = /^(articles|articles\/(upsert|[0-9a-f-]{36})|tags)$/.test(route);
+    const reportRoute = /^reports(?:\/(?:latest|projects|unresolved|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+-[0-9]{4,}(?:\/history)?))?$/.test(route);
     const uploadRoute = route === "uploads";
     const maxBytes = uploadRoute ? 10 * 1024 * 1024 + 64 * 1024 : jsonMaxBytes;
     const contentType = request.headers.get("content-type") || "";
     const authRoute = /^(auth\/(login|logout|me))$/.test(route);
-    const allowed = uploadRoute || authRoute || articleRoute || /^(ingest|ingest\/(batch|categories)|capabilities|categories|entries|entries\/(parse|batch|[0-9a-f-]{36}))$/.test(route);
+    const allowed = uploadRoute || authRoute || articleRoute || reportRoute || /^(ingest|ingest\/(batch|categories)|capabilities|categories|entries|entries\/(parse|batch|[0-9a-f-]{36}))$/.test(route);
     if (!allowed) return NextResponse.json({ detail: "Not found" }, { status: 404 });
     const authorization = request.headers.get("authorization");
     if (request.method !== "GET") {

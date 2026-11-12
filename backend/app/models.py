@@ -88,3 +88,45 @@ class Article(Base):
     @property
     def related_articles(self) -> list[UUID]:
         return sorted((article.id for article in self.related_records), key=str)
+
+
+class OperationReport(Base):
+    """Single-owner private repository, independent of public articles."""
+    __tablename__ = "operation_reports"
+    __table_args__ = (
+        CheckConstraint("status IN ('SUCCESS', 'PARTIAL', 'BLOCKED', 'FAILED')", name="ck_reports_status"),
+        CheckConstraint("source IN ('Codex', 'ChatGPT', 'Manual')", name="ck_reports_source"),
+        CheckConstraint("revision >= 1", name="ck_reports_revision"),
+        Index("ix_reports_created", "created_at", "report_id"),
+        Index("ix_reports_project_component", "project", "component", "created_at", "report_id"),
+    )
+    report_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    project: Mapped[str] = mapped_column(String(200))
+    component: Mapped[str] = mapped_column(String(200))
+    author: Mapped[str] = mapped_column(String(200))
+    source: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20))
+    summary: Mapped[str] = mapped_column(Text)
+    environment: Mapped[str] = mapped_column(Text)
+    findings: Mapped[str] = mapped_column(Text)
+    changes: Mapped[str] = mapped_column(Text)
+    metrics_before: Mapped[list[dict]] = mapped_column(JSONB, default=list)
+    metrics_after: Mapped[list[dict]] = mapped_column(JSONB, default=list)
+    remaining_issues: Mapped[str] = mapped_column(Text)
+    next_actions: Mapped[str] = mapped_column(Text)
+    raw_markdown: Mapped[str] = mapped_column(Text)
+    related_report_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    related_article_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revision: Mapped[int] = mapped_column(default=1)
+
+
+class ReportRevision(Base):
+    __tablename__ = "report_revisions"
+    report_id: Mapped[str] = mapped_column(ForeignKey("operation_reports.report_id", ondelete="RESTRICT"), primary_key=True)
+    revision: Mapped[int] = mapped_column(primary_key=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    actor: Mapped[str] = mapped_column(String(100))
+    snapshot: Mapped[dict] = mapped_column(JSONB)

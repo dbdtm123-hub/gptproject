@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
-  const protectedPage = path === "/admin" || path.startsWith("/admin/") || path === "/legacy" ||
+  const protectedPage = path === "/reports" || path.startsWith("/reports/") || path === "/admin" || path.startsWith("/admin/") || path === "/legacy" ||
     path === "/articles/new" || /^\/articles\/[^/]+\/edit$/.test(path);
   if (!protectedPage) return NextResponse.next();
   const session = request.cookies.get("autolog_admin")?.value;
@@ -17,4 +17,4 @@ export async function proxy(request: NextRequest) {
   return NextResponse.redirect(new URL("/login", request.url));
 }
 
-export const config = { matcher: ["/admin/:path*", "/legacy", "/articles/new", "/articles/:id/edit"] };
+export const config = { matcher: ["/reports/:path*", "/admin/:path*", "/legacy", "/articles/new", "/articles/:id/edit"] };

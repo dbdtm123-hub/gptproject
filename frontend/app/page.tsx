@@ -53,7 +53,7 @@ export default function Blog() {
   return <main className="blog">
     <header className="blog-header"><div><span className="eyebrow">대화에서 지식으로</span><h1>AutoLog</h1>
       <p>작업 과정과 문제 해결을 오래 읽을 수 있는 기술 글로 남깁니다.</p></div>
-      <Link className="button" href="/admin">관리자</Link></header>
+      <nav className="actions" aria-label="AutoLog 메뉴"><Link href="/reports">운영 리포트</Link><Link className="button" href="/admin">관리자</Link></nav></header>
     <nav className="category-index" aria-label="카테고리">
       {[{ id: "", name: "전체" }, ...categories].map(c => <button key={c.id}
         type="button" className={`category-tab${category === c.id ? " selected" : ""}`}
