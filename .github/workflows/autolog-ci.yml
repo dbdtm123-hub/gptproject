@@ -48,6 +48,7 @@ jobs:
         working-directory: backend
         run: python -m pytest -q
       - name: OAuth regression tests
+        working-directory: backend
         run: python -m pytest ../tests/oauth -q
 
   image-gateway:
