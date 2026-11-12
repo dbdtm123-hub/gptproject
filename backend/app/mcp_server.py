@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
-from app.mcp_auth import READ, WRITE, authenticate, require_scope
+from app.mcp_auth import READ, WRITE, REPORT_READ, REPORT_WRITE, authenticate, require_scope
 from app.mcp_config import get_mcp_settings
 from app.mcp_tools import CONTRACTS, call_tool, tools
 
@@ -34,7 +34,7 @@ async def ready():
 @app.get("/.well-known/oauth-protected-resource/mcp")
 async def metadata():
     s = get_mcp_settings()
-    return {"resource": s.resource, "authorization_servers": [s.issuer], "scopes_supported": [READ, WRITE],
+    return {"resource": s.resource, "authorization_servers": [s.issuer], "scopes_supported": [READ, WRITE, REPORT_READ, REPORT_WRITE],
             "bearer_methods_supported": ["header"]}
 
 
@@ -89,12 +89,13 @@ async def mcp(request: Request):
         return rpc_error(ident, -32602, "Invalid params")
     if method == "initialize":
         result = {"protocolVersion": params.get("protocolVersion") if params.get("protocolVersion") in VERSIONS else VERSIONS[0],
-                  "capabilities": {"tools": {}}, "serverInfo": {"name": "autolog", "version": "1.0.0"},
-                  "instructions": "Read get_writing_guidelines, categories and existing articles before saving. Only publish on user request. Reuse upload_image URLs. Never retry an uncertain write or version conflict blindly."}
+                  "capabilities": {"tools": {}}, "serverInfo": {"name": "autolog", "version": "1.1.0"},
+                  "instructions": "Operations reports use private report tools and stable report IDs, never article publication. Read a report revision before updating. Read get_writing_guidelines, categories and existing articles before saving. Only publish on user request. Reuse upload_image URLs. Never retry an uncertain write or version conflict blindly."}
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        require_scope(claims, READ)
+        if not set(claims["scope"].split()) & {READ, REPORT_READ, REPORT_WRITE}:
+            require_scope(claims, READ)
         result = {"tools": tools()}
     elif method == "tools/call":
         name = params.get("name")

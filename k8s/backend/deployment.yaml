@@ -46,6 +46,12 @@ spec:
             - configMapRef:
                 name: lifelog-config
           env:
+            - name: REPORT_READERS
+              valueFrom:
+                secretKeyRef:
+                  name: lifelog-report-readers
+                  key: REPORT_READERS
+                  optional: true
             - name: S3_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
