@@ -47,6 +47,8 @@ jobs:
       - name: Run backend tests
         working-directory: backend
         run: python -m pytest -q
+      - name: Report reader query isolation (explicit portable read fixture)
+        run: python -m pytest tests/report_access -q
 
   image-gateway:
     name: Image gateway unit tests (Python 3.12)
@@ -88,6 +90,18 @@ jobs:
       - name: Production build
         run: npm run build
 
+  sites-mcp:
+    name: Existing Sites MCP catalog and credential regressions
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test captured production Worker and Reports dispatch
+        working-directory: integrations/sites-autolog
+        run: npm test
+
   manifests:
     name: Render Kubernetes manifests (offline)
     runs-on: ubuntu-24.04
@@ -123,7 +137,7 @@ jobs:
   publish:
     name: Publish ${{ matrix.component }} SHA image
     # Images are published only after all checks pass on the trusted work branch.
-    needs: [backend, image-gateway, frontend, manifests]
+    needs: [backend, image-gateway, frontend, manifests, sites-mcp]
     if: github.event_name == 'push' && github.ref == 'refs/heads/work'
     runs-on: ubuntu-24.04
     permissions:
@@ -152,3 +166,4 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+

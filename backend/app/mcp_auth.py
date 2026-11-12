@@ -8,6 +8,8 @@ from app.mcp_config import get_mcp_settings
 
 READ = "autolog:read"
 WRITE = "autolog:write"
+REPORT_READ = "autolog:reports:read"
+REPORT_WRITE = "autolog:reports:write"
 
 
 def challenge(error="invalid_token", scope=READ):
@@ -77,3 +79,4 @@ async def authenticate(request: Request) -> dict:
 def require_scope(claims: dict, scope: str):
     if scope not in claims["scope"].split():
         raise HTTPException(403, "OAuth scope required", headers={"WWW-Authenticate": challenge("insufficient_scope", scope)})
+

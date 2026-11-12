@@ -227,7 +227,7 @@ def run_checks(directory, credentials):
             print('LAB_MCP_INITIALIZE_STATUS ' + str(initialize_result.status_code), flush=True)
         check(initialize_result.status_code == 200, 'real token MCP initialize')
         listed = asyncio.run(call(tokens['access_token']))
-        check(listed.status_code == 200 and len(listed.json()['result']['tools']) == 11, 'real token MCP tools/list 11')
+        check(listed.status_code == 200 and len(listed.json()['result']['tools']) == len(mcp_tools.CONTRACTS), 'real token MCP tools/list matches registered contracts')
         settings.access_token_format = 'rfc7662'
         check(asyncio.run(call(tokens['access_token'])).status_code == 401,
               'default strict token format rejects optional claim omission')

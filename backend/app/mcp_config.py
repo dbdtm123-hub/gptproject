@@ -22,6 +22,10 @@ class MCPSettings(BaseSettings):
     allowed_origins: list[str] = []
     backend_url: str = "http://lifelog-backend:8000"
     backend_token: SecretStr = SecretStr("")
+    report_backend_token: SecretStr = SecretStr("")
+    # Report requests never fall back to the shared article/owner credential.
+    report_subject_tokens: dict[str, SecretStr] = {}
+    report_owner_subjects: list[str] = []
     image_public_base: str = "https://img.example.com"
     blog_public_base: str = "https://autolog.example.com"
     private_reads: bool = False
@@ -48,3 +52,4 @@ class MCPSettings(BaseSettings):
 @lru_cache
 def get_mcp_settings():
     return MCPSettings()
+

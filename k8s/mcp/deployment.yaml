@@ -40,6 +40,12 @@ spec:
             - configMapRef:
                 name: autolog-mcp-config
           env:
+            - name: AUTOLOG_MCP_REPORT_SUBJECT_TOKENS
+              valueFrom:
+                secretKeyRef:
+                  name: lifelog-report-readers
+                  key: AUTOLOG_MCP_REPORT_SUBJECT_TOKENS
+                  optional: true
             - name: AUTOLOG_MCP_BACKEND_TOKEN
               valueFrom:
                 secretKeyRef:
